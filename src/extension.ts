@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
 import { SymbolResolver } from "./context/symbolResolver";
+import {
+  DiagnosticQuickFixProvider,
+  registerDiagnosticCommands,
+} from "./providers/diagnosticQuickFixProvider";
 import { DeepWikiViewProvider } from "./webview/wikiViewProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -38,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
         placeHolder: "e.g. handleRequest, AuthController, streamData",
       });
 
-      if (input && input.trim()) {
+      if (input?.trim()) {
         const fallbackSymbol = {
           name: input.trim(),
           kind: "Symbol",
@@ -99,6 +103,20 @@ export function activate(context: vscode.ExtensionContext) {
       },
     ),
   );
+
+  // Diagnostic Quick Fix Provider (Ask Hermes Studio / Explain in DeepWiki)
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      [{ scheme: "file" }, { scheme: "untitled" }],
+      new DiagnosticQuickFixProvider(),
+      {
+        providedCodeActionKinds: DiagnosticQuickFixProvider.providedCodeActionKinds,
+      },
+    ),
+  );
+
+  // Register commands for diagnostic quick fixes
+  registerDiagnosticCommands(context, provider);
 }
 
 export function deactivate() {}

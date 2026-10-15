@@ -1,4 +1,4 @@
-import * as path from "path";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import type { DeepWikiSymbol, SymbolRange } from "../types";
 
@@ -36,7 +36,7 @@ export class SymbolResolver {
           targetRange = firstDef.range;
         }
       }
-    } catch (err) {
+    } catch (_err) {
       // Fall back to current document
     }
 
@@ -63,7 +63,7 @@ export class SymbolResolver {
           enclosingRange = match.range;
         }
       }
-    } catch (err) {
+    } catch (_err) {
       // Ignored
     }
 

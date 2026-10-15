@@ -65,6 +65,16 @@
       {
         "command": "deepwiki.openFileCitation",
         "title": "DeepWiki: Open File Citation"
+      },
+      {
+        "command": "deepwiki.askHermesDiagnostic",
+        "title": "Ask Hermes Studio to Fix Problem",
+        "category": "DeepWiki"
+      },
+      {
+        "command": "deepwiki.explainDiagnosticInDeepWiki",
+        "title": "Explain Problem in DeepWiki",
+        "category": "DeepWiki"
       }
     ],
     "menus": {
