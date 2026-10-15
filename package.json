@@ -1,0 +1,168 @@
+{
+  "name": "deepwiki",
+  "displayName": "DeepWiki",
+  "description": "Interactive Code Encyclopedia & Symbol Documentation for VS Code",
+  "version": "0.1.0",
+  "publisher": "morluto",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/6qat/rea-deepwiki"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Education",
+    "Other"
+  ],
+  "icon": "media/deepwiki.png",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "deepwiki-explorer",
+          "title": "DeepWiki",
+          "icon": "media/deepwiki.svg"
+        }
+      ]
+    },
+    "views": {
+      "deepwiki-explorer": [
+        {
+          "id": "deepwiki.wikiView",
+          "name": "DeepWiki",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "deepwiki.openSymbol",
+        "title": "Open Symbol in DeepWiki",
+        "category": "DeepWiki"
+      },
+      {
+        "command": "deepwiki.openWikiTab",
+        "title": "Open DeepWiki in Editor Tab",
+        "category": "DeepWiki",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "deepwiki.refresh",
+        "title": "Refresh Article",
+        "category": "DeepWiki",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "deepwiki.openFileLocation",
+        "title": "DeepWiki: Open File Location"
+      },
+      {
+        "command": "deepwiki.openFileCitation",
+        "title": "DeepWiki: Open File Citation"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "deepwiki.openSymbol",
+          "group": "navigation@1.5",
+          "when": "editorTextFocus"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "deepwiki.openWikiTab",
+          "when": "view == deepwiki.wikiView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "deepwiki.refresh",
+          "when": "view == deepwiki.wikiView",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "deepwiki.openSymbol",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "DeepWiki",
+      "properties": {
+        "deepwiki.provider": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "openai",
+            "anthropic",
+            "gemini",
+            "ollama",
+            "devin_bridge"
+          ],
+          "default": "auto",
+          "description": "LLM intelligence provider for DeepWiki articles. 'auto' automatically selects OpenAI-compatible, Anthropic, Gemini, or Ollama based on API key and Base URL."
+        },
+        "deepwiki.model": {
+          "type": "string",
+          "default": "llama3.2",
+          "description": "Model identifier to generate articles (e.g., llama3.2, gpt-4o, claude-3-5-sonnet-latest, gemini-2.0-flash)."
+        },
+        "deepwiki.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API Key for cloud providers (OpenAI, Anthropic, Gemini)."
+        },
+        "deepwiki.apiBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Custom API base URL (defaults to http://localhost:11434 for Ollama)."
+        },
+        "deepwiki.devinBridgePort": {
+          "type": "number",
+          "default": 0,
+          "description": "Local Devin language server port (when using Devin Bridge mode; 0 for auto-detect)."
+        },
+        "deepwiki.followupAction": {
+          "type": "string",
+          "enum": [
+            "hermes",
+            "deepwiki",
+            "clipboard"
+          ],
+          "default": "hermes",
+          "description": "Action when clicking an 'Explore Further' question chip: open new chat in Hermes Studio, explore in DeepWiki, or copy to clipboard."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "node esbuild.mjs --production && pnpm dlx @vscode/vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "highlight.js": "^11.12.0",
+    "marked": "^15.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,544 @@
+/* DeepWiki Dark Theme & Layout CSS */
+:root {
+  --vscode-editor-background: #0b0f19;
+  --vscode-editor-foreground: #f1f5f9;
+  --vscode-descriptionForeground: #94a3b8;
+  --vscode-textLink-foreground: #38bdf8;
+  --vscode-textLink-activeForeground: #7dd3fc;
+  --vscode-textCodeBlock-background: #111827;
+  --vscode-list-background: #0f172a;
+  --vscode-list-hoverBackground: #1e293b;
+  --vscode-list-activeSelectionBackground: #334155;
+  --vscode-list-activeSelectionForeground: #f8fafc;
+  --vscode-toolbar-hoverBackground: #1e293b;
+  --vscode-focusBorder: #38bdf8;
+  --vscode-panel-border: #1e293b;
+  --vscode-textSeparator-foreground: #1e293b;
+  --vscode-contrastBorder: #334155;
+  --vscode-scrollbarSlider-background: rgba(148, 163, 184, 0.2);
+  --vscode-scrollbarSlider-hoverBackground: rgba(148, 163, 184, 0.35);
+  --vscode-scrollbarSlider-activeBackground: rgba(148, 163, 184, 0.5);
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --vscode-editor-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --vscode-editor-font-size: 13px;
+  --vscode-editor-line-height: 1.5;
+}
+
+body {
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  font-family: var(--vscode-font-family);
+  -webkit-font-smoothing: antialiased;
+}
+
+.deepwiki-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.deepwiki-content-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 32px;
+}
+
+/* Custom Scrollbars */
+.deepwiki-view ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.deepwiki-view ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.deepwiki-view ::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 4px;
+}
+.deepwiki-view ::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+/* Header & Symbol Bar */
+.deepwiki-header {
+  position: relative;
+  padding: 12px 0 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.deepwiki-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.deepwiki-symbol-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+}
+
+.deepwiki-symbol-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.deepwiki-symbol-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+
+.deepwiki-symbol-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.deepwiki-symbol-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deepwiki-symbol-kind-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #1e293b;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  margin-left: 6px;
+}
+
+.deepwiki-symbol-link {
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+.deepwiki-symbol-link:hover {
+  text-decoration: underline;
+  color: var(--vscode-textLink-activeForeground);
+}
+
+.deepwiki-symbol-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.deepwiki-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+.deepwiki-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-editor-foreground);
+}
+.deepwiki-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Model indicator badge */
+.deepwiki-model-type-indicator {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* Skeleton Loading State */
+.deepwiki-skeleton-loader {
+  width: 100%;
+  padding: 20px 0;
+}
+.deepwiki-skeleton-item {
+  background: #1e293b;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  animation: skeleton-fade 1.8s ease-in-out infinite;
+}
+@keyframes skeleton-fade {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.85; }
+}
+.deepwiki-skeleton-title {
+  height: 24px;
+  width: 50%;
+  margin-bottom: 20px;
+}
+.deepwiki-skeleton-heading {
+  height: 18px;
+  width: 35%;
+  margin: 24px 0 14px;
+}
+.deepwiki-skeleton-paragraph {
+  height: 14px;
+  margin-bottom: 8px;
+}
+.deepwiki-skeleton-paragraph.long { width: 100%; }
+.deepwiki-skeleton-paragraph.medium { width: 85%; margin-bottom: 24px; }
+.deepwiki-skeleton-paragraph.short { width: 65%; margin-bottom: 24px; }
+
+/* Article Content & Markdown */
+.deepwiki-article-content {
+  line-height: 1.65;
+  font-size: 13.5px;
+  color: var(--vscode-editor-foreground);
+}
+.deepwiki-article-content h1,
+.deepwiki-article-content h2,
+.deepwiki-article-content h3,
+.deepwiki-article-content h4 {
+  color: #f8fafc;
+  font-weight: 600;
+  margin-top: 24px;
+  margin-bottom: 12px;
+}
+.deepwiki-article-content h1 {
+  font-size: 1.45em;
+  border-bottom: 1px solid var(--vscode-textSeparator-foreground);
+  padding-bottom: 6px;
+}
+.deepwiki-article-content h2 {
+  font-size: 1.25em;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  padding-bottom: 4px;
+}
+.deepwiki-article-content h3 {
+  font-size: 1.1em;
+}
+.deepwiki-article-content p {
+  margin: 0 0 14px;
+}
+.deepwiki-article-content ul,
+.deepwiki-article-content ol {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+.deepwiki-article-content li {
+  margin-bottom: 4px;
+}
+.deepwiki-article-content code {
+  background: #1e293b;
+  color: #38bdf8;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  border: 1px solid #334155;
+}
+
+/* Enhanced Code Blocks */
+.deepwiki-enhanced-code-block {
+  margin: 16px 0;
+  border-radius: 8px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  overflow: hidden;
+}
+
+.deepwiki-enhanced-code-block-header {
+  display: flex;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.deepwiki-code-block-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  min-width: 0;
+  flex: 1;
+}
+.deepwiki-code-block-left:hover .deepwiki-code-block-filename {
+  color: var(--vscode-textLink-foreground);
+}
+
+.deepwiki-code-block-filename {
+  font-family: var(--vscode-editor-font-family);
+  font-weight: 500;
+  color: var(--vscode-editor-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deepwiki-code-block-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deepwiki-code-block-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.deepwiki-code-block-btn:hover {
+  background: #334155;
+  color: #f8fafc;
+}
+
+.deepwiki-enhanced-code-block-content {
+  position: relative;
+  overflow-x: auto;
+}
+.deepwiki-enhanced-code-block-content pre {
+  margin: 0;
+  padding: 12px 16px;
+  background: transparent;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: var(--vscode-editor-line-height);
+  color: #e2e8f0;
+}
+.deepwiki-enhanced-code-block-content code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+}
+
+.deepwiki-code-block-expand-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  background: #1e293b;
+  color: #38bdf8;
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family);
+  cursor: pointer;
+  border-top: 1px dashed #334155;
+  transition: background 0.15s ease;
+}
+.deepwiki-code-block-expand-button:hover {
+  background: #334155;
+}
+
+/* Follow-up Questions Chips */
+.deepwiki-follow-up-questions {
+  margin-top: 28px;
+  padding: 16px 0 24px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.deepwiki-follow-up-questions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.deepwiki-follow-up-questions-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.deepwiki-question-bubble {
+  display: flex;
+  align-items: center;
+  margin: 6px 0;
+  padding: 10px 14px;
+  background: #111827;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 13px;
+  color: #e2e8f0;
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
+}
+.deepwiki-question-bubble:hover {
+  background: #1e293b;
+  border-color: #38bdf8;
+  color: #38bdf8;
+  transform: translateX(2px);
+}
+
+/* Empty State / Welcome Screen */
+.deepwiki-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 70vh;
+  text-align: center;
+  padding: 24px;
+  color: var(--vscode-descriptionForeground);
+}
+.deepwiki-welcome-icon {
+  width: 56px;
+  height: 56px;
+  color: #38bdf8;
+  margin-bottom: 16px;
+  opacity: 0.9;
+}
+.deepwiki-welcome h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f8fafc;
+  margin: 0 0 8px;
+}
+.deepwiki-welcome p {
+  font-size: 13px;
+  max-width: 320px;
+  line-height: 1.5;
+  margin: 0 0 20px;
+}
+.deepwiki-welcome-shortcut {
+  background: #1e293b;
+  border: 1px solid #334155;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  color: #38bdf8;
+}
+
+/* Syntax Highlighting Tokens (Dark Theme) */
+.hljs {
+  color: #e2e8f0;
+  background: transparent;
+}
+.hljs-doctag,
+.hljs-keyword,
+.hljs-meta .hljs-keyword,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-variable.language_ {
+  color: #f43f5e;
+}
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_ {
+  color: #c084fc;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-operator,
+.hljs-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: #38bdf8;
+}
+.hljs-regexp,
+.hljs-string,
+.hljs-meta .hljs-string {
+  color: #34d399;
+}
+.hljs-built_in,
+.hljs-symbol {
+  color: #fb923c;
+}
+.hljs-comment,
+.hljs-code,
+.hljs-formula {
+  color: #64748b;
+  font-style: italic;
+}
+.hljs-name,
+.hljs-quote,
+.hljs-selector-tag,
+.hljs-selector-pseudo {
+  color: #4ade80;
+}
+.hljs-subst {
+  color: #e2e8f0;
+}
+.hljs-section {
+  color: #60a5fa;
+  font-weight: bold;
+}
+.hljs-bullet {
+  color: #facc15;
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: bold;
+}
+.hljs-addition {
+  color: #4ade80;
+  background-color: rgba(34, 197, 94, 0.15);
+}
+.hljs-deletion {
+  color: #f87171;
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
