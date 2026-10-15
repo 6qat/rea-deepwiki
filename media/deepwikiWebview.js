@@ -13,6 +13,10 @@
   const modelBadgeEl = document.getElementById("model-badge");
   const followupContainer = document.getElementById("followup-container");
   const followupList = document.getElementById("followup-list");
+  const customQuestionInput = document.getElementById("custom-question-input");
+  const customQuestionBtn = document.getElementById("btn-custom-question-submit");
+  const qaContainer = document.getElementById("qa-container");
+  const qaList = document.getElementById("qa-list");
   const backBtn = document.getElementById("btn-back");
   const forwardBtn = document.getElementById("btn-forward");
   const refreshBtn = document.getElementById("btn-refresh");
@@ -21,6 +25,7 @@
   let currentSymbol = null;
   let currentMarkdown = "";
   let isStreaming = false;
+  const activeQAs = new Map();
 
   // Configure marked with highlight.js syntax highlighting
   if (typeof marked !== "undefined") {
@@ -42,8 +47,8 @@
           }
           const langClass = lang ? `language-${lang}` : "";
           return `<pre><code class="hljs ${langClass}">${highlighted}</code></pre>`;
-        }
-      }
+        },
+      },
     });
   }
 
@@ -56,6 +61,7 @@
         currentSymbol = msg.symbol;
         currentMarkdown = "";
         isStreaming = true;
+        activeQAs.clear();
 
         welcomeContainer.style.display = "none";
         articleContainer.style.display = "flex";
@@ -64,6 +70,9 @@
         articleContent.innerHTML = "";
         followupContainer.style.display = "none";
         followupList.innerHTML = "";
+        if (customQuestionInput) customQuestionInput.value = "";
+        if (qaContainer) qaContainer.style.display = "none";
+        if (qaList) qaList.innerHTML = "";
 
         symbolNameEl.textContent = currentSymbol.name;
         symbolKindEl.textContent = currentSymbol.kind;
@@ -87,7 +96,7 @@
         articleContent.style.display = "block";
         currentMarkdown = msg.fullMarkdown;
         renderMarkdown(currentMarkdown);
-        enhanceCodeBlocks();
+        enhanceCodeBlocks(articleContent);
 
         if (msg.modelType) {
           modelBadgeEl.textContent = msg.modelType;
@@ -96,6 +105,14 @@
 
         if (msg.followupQuestions && msg.followupQuestions.length > 0) {
           renderFollowupQuestions(msg.followupQuestions);
+        }
+
+        if (msg.qas && msg.qas.length > 0) {
+          qaContainer.style.display = "block";
+          qaList.innerHTML = "";
+          msg.qas.forEach((qa) => {
+            renderCompleteQaCard(qa);
+          });
         }
         break;
 
@@ -117,6 +134,152 @@
         });
         break;
 
+      case "qaStreamStart": {
+        const qaId = msg.qaId;
+        const question = msg.question;
+
+        if (qaContainer) qaContainer.style.display = "block";
+
+        // Reset any loading indicators on question bubbles
+        const bubbles = followupList.querySelectorAll(".deepwiki-question-bubble");
+        bubbles.forEach((b) => {
+          b.classList.remove("loading");
+          const span = b.querySelector("span:last-child");
+          if (span && span.textContent === "Answering...") {
+            span.innerHTML = `Ask inline &darr;`;
+          }
+        });
+
+        let card = document.getElementById(qaId);
+        if (!card) {
+          card = document.createElement("div");
+          card.id = qaId;
+          card.className = "deepwiki-qa-card active";
+          card.innerHTML = `
+            <div class="deepwiki-qa-card-header">
+              <div class="deepwiki-qa-card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span>${escapeHtml(question)}</span>
+              </div>
+              <div class="deepwiki-qa-card-actions">
+                <span class="deepwiki-qa-model-badge">DeepWiki</span>
+                <button class="deepwiki-qa-action-btn btn-copy-qa" title="Copy Answer">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span>Copy</span>
+                </button>
+                <button class="deepwiki-qa-action-btn btn-hermes-qa" title="Continue in Hermes Studio">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                  <span>Hermes ↗</span>
+                </button>
+              </div>
+            </div>
+            <div class="deepwiki-qa-card-body">
+              <div class="deepwiki-qa-loading-indicator">
+                <span class="deepwiki-spinner"></span>
+                <span>Generating answer...</span>
+              </div>
+              <div class="deepwiki-qa-content" style="display: none;"></div>
+            </div>
+          `;
+
+          const copyQaBtn = card.querySelector(".btn-copy-qa");
+          const hermesQaBtn = card.querySelector(".btn-hermes-qa");
+
+          copyQaBtn?.addEventListener("click", () => {
+            const entry = activeQAs.get(qaId);
+            if (entry && entry.markdown) {
+              navigator.clipboard.writeText(entry.markdown);
+              const span = copyQaBtn.querySelector("span");
+              if (span) span.textContent = "Copied!";
+              setTimeout(() => {
+                if (span) span.textContent = "Copy";
+              }, 1500);
+            }
+          });
+
+          hermesQaBtn?.addEventListener("click", () => {
+            const entry = activeQAs.get(qaId);
+            vscode.postMessage({
+              type: "openInHermes",
+              question: question,
+              answer: entry ? entry.markdown : "",
+            });
+          });
+
+          qaList.appendChild(card);
+        }
+
+        activeQAs.set(qaId, {
+          id: qaId,
+          question,
+          markdown: "",
+          card,
+          bodyEl: card.querySelector(".deepwiki-qa-content"),
+          loadingEl: card.querySelector(".deepwiki-qa-loading-indicator"),
+          badgeEl: card.querySelector(".deepwiki-qa-model-badge"),
+        });
+
+        card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        break;
+      }
+
+      case "qaStreamDelta": {
+        const qaId = msg.qaId;
+        const entry = activeQAs.get(qaId);
+        if (entry) {
+          entry.markdown += msg.delta;
+          if (entry.loadingEl && entry.loadingEl.style.display !== "none") {
+            entry.loadingEl.style.display = "none";
+            entry.bodyEl.style.display = "block";
+          }
+          if (typeof marked !== "undefined") {
+            entry.bodyEl.innerHTML = marked.parse(entry.markdown);
+            bindCitationLinks(entry.bodyEl);
+          } else {
+            entry.bodyEl.textContent = entry.markdown;
+          }
+        }
+        break;
+      }
+
+      case "qaStreamComplete": {
+        const qaId = msg.qaId;
+        const entry = activeQAs.get(qaId);
+        if (entry) {
+          entry.markdown = msg.fullMarkdown;
+          if (entry.loadingEl) entry.loadingEl.style.display = "none";
+          entry.bodyEl.style.display = "block";
+          if (typeof marked !== "undefined") {
+            entry.bodyEl.innerHTML = marked.parse(entry.markdown);
+            bindCitationLinks(entry.bodyEl);
+          } else {
+            entry.bodyEl.textContent = entry.markdown;
+          }
+          if (msg.modelType && entry.badgeEl) {
+            entry.badgeEl.textContent = msg.modelType;
+          }
+          enhanceCodeBlocks(entry.card);
+          entry.card.classList.remove("active");
+        }
+        break;
+      }
+
+      case "qaStreamError": {
+        const qaId = msg.qaId;
+        const entry = activeQAs.get(qaId);
+        if (entry) {
+          if (entry.loadingEl) entry.loadingEl.style.display = "none";
+          entry.bodyEl.style.display = "block";
+          entry.bodyEl.innerHTML = `
+            <div style="padding: 10px 12px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; font-size: 12px;">
+              <strong>Error:</strong> ${escapeHtml(msg.message)}
+            </div>
+          `;
+          entry.card.classList.remove("active");
+        }
+        break;
+      }
+
       case "setHistoryState":
         if (backBtn) backBtn.disabled = !msg.hasBack;
         if (forwardBtn) forwardBtn.disabled = !msg.hasForward;
@@ -128,14 +291,15 @@
     if (typeof marked !== "undefined") {
       // @ts-ignore
       articleContent.innerHTML = marked.parse(md);
-      bindCitationLinks();
+      bindCitationLinks(articleContent);
     } else {
       articleContent.textContent = md;
     }
   }
 
-  function bindCitationLinks() {
-    const links = articleContent.querySelectorAll("a");
+  function bindCitationLinks(container) {
+    const root = container || articleContent;
+    const links = root.querySelectorAll("a");
     links.forEach((link) => {
       const href = link.getAttribute("href") || "";
       if (href.startsWith("command:deepwiki.openFileCitation")) {
@@ -161,8 +325,9 @@
     });
   }
 
-  function enhanceCodeBlocks() {
-    const preBlocks = articleContent.querySelectorAll("pre");
+  function enhanceCodeBlocks(container) {
+    const root = container || articleContent;
+    const preBlocks = root.querySelectorAll("pre");
     preBlocks.forEach((pre) => {
       if (pre.closest(".deepwiki-enhanced-code-block")) return;
 
@@ -176,7 +341,6 @@
       const wrapper = document.createElement("div");
       wrapper.className = "deepwiki-enhanced-code-block";
 
-      // Detect language or filename if indicated
       let lang = "code";
       const classes = codeEl.className.split(" ");
       for (const c of classes) {
@@ -233,10 +397,8 @@
       wrapper.appendChild(contentDiv);
       contentDiv.appendChild(pre);
 
-      // Auto-collapse if lines > 20
       if (lineCount > 20) {
         let isExpanded = false;
-        const originalPreStyle = pre.style.cssText;
         pre.style.maxHeight = "220px";
         pre.style.overflow = "hidden";
 
@@ -267,13 +429,16 @@
     questions.forEach((q) => {
       const bubble = document.createElement("button");
       bubble.className = "deepwiki-question-bubble";
-      bubble.title = "Open new chat in Hermes Studio";
+      bubble.title = "Ask question inline";
       bubble.innerHTML = `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" style="margin-right: 8px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
         <span style="flex: 1;">${escapeHtml(q)}</span>
-        <span style="font-size: 11px; opacity: 0.65; margin-left: 8px; flex-shrink: 0; color: #38bdf8; display: flex; align-items: center; gap: 3px;">Ask Hermes &rarr;</span>
+        <span style="font-size: 11px; opacity: 0.7; margin-left: 8px; flex-shrink: 0; color: #38bdf8; display: flex; align-items: center; gap: 3px;">Ask inline &darr;</span>
       `;
       bubble.addEventListener("click", () => {
+        bubble.classList.add("loading");
+        const statusSpan = bubble.querySelector("span:last-child");
+        if (statusSpan) statusSpan.textContent = "Answering...";
         vscode.postMessage({
           type: "followupClick",
           question: q,
@@ -284,7 +449,83 @@
     followupContainer.style.display = "block";
   }
 
-  // Button Listeners
+  function renderCompleteQaCard(qa) {
+    const card = document.createElement("div");
+    card.id = qa.id;
+    card.className = "deepwiki-qa-card";
+    card.innerHTML = `
+      <div class="deepwiki-qa-card-header">
+        <div class="deepwiki-qa-card-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <span>${escapeHtml(qa.question)}</span>
+        </div>
+        <div class="deepwiki-qa-card-actions">
+          <span class="deepwiki-qa-model-badge">${escapeHtml(qa.modelType || "DeepWiki")}</span>
+          <button class="deepwiki-qa-action-btn btn-copy-qa" title="Copy Answer">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy</span>
+          </button>
+          <button class="deepwiki-qa-action-btn btn-hermes-qa" title="Continue in Hermes Studio">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            <span>Hermes ↗</span>
+          </button>
+        </div>
+      </div>
+      <div class="deepwiki-qa-card-body">
+        <div class="deepwiki-qa-content">${typeof marked !== "undefined" ? marked.parse(qa.answerMarkdown) : escapeHtml(qa.answerMarkdown)}</div>
+      </div>
+    `;
+
+    card.querySelector(".btn-copy-qa")?.addEventListener("click", () => {
+      navigator.clipboard.writeText(qa.answerMarkdown);
+      const span = card.querySelector(".btn-copy-qa span");
+      if (span) span.textContent = "Copied!";
+      setTimeout(() => {
+        if (span) span.textContent = "Copy";
+      }, 1500);
+    });
+
+    card.querySelector(".btn-hermes-qa")?.addEventListener("click", () => {
+      vscode.postMessage({
+        type: "openInHermes",
+        question: qa.question,
+        answer: qa.answerMarkdown,
+      });
+    });
+
+    qaList.appendChild(card);
+    activeQAs.set(qa.id, {
+      id: qa.id,
+      question: qa.question,
+      markdown: qa.answerMarkdown,
+      card,
+      bodyEl: card.querySelector(".deepwiki-qa-content"),
+    });
+
+    bindCitationLinks(card);
+    enhanceCodeBlocks(card);
+  }
+
+  function submitCustomQuestion() {
+    if (!customQuestionInput) return;
+    const q = customQuestionInput.value.trim();
+    if (!q) return;
+    customQuestionInput.value = "";
+    vscode.postMessage({
+      type: "askCustomQuestion",
+      question: q,
+    });
+  }
+
+  customQuestionBtn?.addEventListener("click", submitCustomQuestion);
+  customQuestionInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitCustomQuestion();
+    }
+  });
+
+  // Header Button Listeners
   backBtn?.addEventListener("click", () => {
     vscode.postMessage({ type: "historyBack" });
   });

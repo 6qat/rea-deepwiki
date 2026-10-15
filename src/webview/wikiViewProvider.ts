@@ -16,6 +16,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
   private _history: DeepWikiArticle[] = [];
   private _historyIndex: number = -1;
   private _currentAbortController?: AbortController;
+  private _currentQaAbortController?: AbortController;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -106,7 +107,13 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
           await this.refreshCurrentArticle();
           break;
         case "followupClick":
-          await this.handleFollowupClick(msg.question);
+          await this.handleFollowupClick(msg.question, msg.qaId);
+          break;
+        case "askCustomQuestion":
+          await this.handleFollowupClick(msg.question, msg.qaId);
+          break;
+        case "openInHermes":
+          await this.handleOpenInHermes(msg.question, msg.answer);
           break;
       }
     });
@@ -125,6 +132,11 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       this._currentAbortController.abort();
     }
     this._currentAbortController = new AbortController();
+
+    if (this._currentQaAbortController) {
+      this._currentQaAbortController.abort();
+      this._currentQaAbortController = undefined;
+    }
 
     this.postToAllWebviews({
       type: "setSymbol",
@@ -150,6 +162,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
         followupQuestions: result.followupQuestions,
         modelType: result.modelType,
         requestId: Date.now().toString(),
+        qas: [],
       };
 
       // Push to history
@@ -182,6 +195,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       fullMarkdown: article.markdown,
       followupQuestions: article.followupQuestions,
       modelType: article.modelType,
+      qas: article.qas || [],
     });
 
     this.updateHistoryButtons();
@@ -218,43 +232,26 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async handleFollowupClick(question: string): Promise<void> {
+  private async handleFollowupClick(
+    question: string,
+    providedQaId?: string
+  ): Promise<void> {
     const config = vscode.workspace.getConfiguration("deepwiki");
-    const followupAction = config.get<string>("followupAction", "hermes");
+    const followupAction = config.get<string>("followupAction", "inline");
     const current =
       this._historyIndex >= 0 ? this._history[this._historyIndex] : undefined;
 
-    const promptText = current
-      ? `Regarding \`${current.symbol.name}\` (${current.symbol.kind}) in \`${current.symbol.relativePath}\`:\n${question}`
-      : question;
-
-    if (followupAction === "hermes") {
-      // 1. Copy the formatted prompt with code context to clipboard
-      await vscode.env.clipboard.writeText(promptText);
-
-      // 2. Open new chat in Hermes Studio
-      const hermesExt = vscode.extensions.getExtension("jefuriiij.hermes-studio");
-      if (hermesExt) {
-        if (!hermesExt.isActive) {
-          await hermesExt.activate();
-        }
-        try {
-          await vscode.commands.executeCommand("hermesStudio.newChat");
-        } catch {
-          await vscode.commands.executeCommand("hermesStudio.openChat");
-        }
-        vscode.window.showInformationMessage(
-          `Opened new chat in Hermes Studio. Question copied to clipboard: "${question}"`
-        );
-        return;
-      } else {
-        vscode.window.showWarningMessage(
-          "Hermes Studio extension is not installed or active."
-        );
-      }
+    if (!current) {
+      vscode.window.showWarningMessage("No active symbol to ask questions about.");
+      return;
     }
 
-    if (followupAction === "deepwiki" && current) {
+    if (followupAction === "hermes") {
+      await this.handleOpenInHermes(question);
+      return;
+    }
+
+    if (followupAction === "deepwiki") {
       const questionSymbol: DeepWikiSymbol = {
         ...current.symbol,
         name: `${current.symbol.name} • ${question}`,
@@ -264,10 +261,103 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    if (followupAction === "clipboard") {
+      const promptText = `Regarding \`${current.symbol.name}\` (${current.symbol.kind}) in \`${current.symbol.relativePath}\`:\n${question}`;
+      await vscode.env.clipboard.writeText(promptText);
+      vscode.window.showInformationMessage(`Copied question to clipboard: "${question}"`);
+      return;
+    }
+
+    // Default: 'inline' - Stream inline answer directly beneath Explore Further
+    const qaId = providedQaId || "qa-" + Date.now().toString();
+
+    // Cancel in-flight QA generation if any
+    if (this._currentQaAbortController) {
+      this._currentQaAbortController.abort();
+    }
+    this._currentQaAbortController = new AbortController();
+
+    this.postToAllWebviews({
+      type: "qaStreamStart",
+      qaId,
+      question,
+    });
+
+    const provider = AIProviderFactory.createProvider();
+    try {
+      const result = await provider.streamQuestion(
+        current.symbol,
+        current.markdown,
+        question,
+        (delta) => {
+          this.postToAllWebviews({
+            type: "qaStreamDelta",
+            qaId,
+            delta,
+          });
+        },
+        this._currentQaAbortController.signal
+      );
+
+      if (!current.qas) {
+        current.qas = [];
+      }
+      current.qas.push({
+        id: qaId,
+        question,
+        answerMarkdown: result.fullMarkdown,
+        modelType: result.modelType,
+      });
+
+      this.postToAllWebviews({
+        type: "qaStreamComplete",
+        qaId,
+        fullMarkdown: result.fullMarkdown,
+        modelType: result.modelType,
+      });
+    } catch (err: any) {
+      if (err.name === "AbortError") return;
+      this.postToAllWebviews({
+        type: "qaStreamError",
+        qaId,
+        message: err.message || "Unknown error generating answer.",
+      });
+    }
+  }
+
+  private async handleOpenInHermes(
+    question: string,
+    answer?: string
+  ): Promise<void> {
+    const current =
+      this._historyIndex >= 0 ? this._history[this._historyIndex] : undefined;
+
+    const promptText = current
+      ? `Regarding \`${current.symbol.name}\` (${current.symbol.kind}) in \`${current.symbol.relativePath}\`:\n\nQuestion: ${question}${
+          answer ? `\n\nDeepWiki Inline Answer:\n${answer}` : ""
+        }`
+      : question;
+
     await vscode.env.clipboard.writeText(promptText);
-    vscode.window.showInformationMessage(
-      `Copied question to clipboard: "${question}"`
-    );
+
+    const hermesExt = vscode.extensions.getExtension("jefuriiij.hermes-studio");
+    if (hermesExt) {
+      if (!hermesExt.isActive) {
+        await hermesExt.activate();
+      }
+      try {
+        await vscode.commands.executeCommand("hermesStudio.newChat");
+      } catch {
+        await vscode.commands.executeCommand("hermesStudio.openChat");
+      }
+      vscode.window.showInformationMessage(
+        `Opened new chat in Hermes Studio. Question context copied to clipboard.`
+      );
+    } else {
+      vscode.window.showWarningMessage(
+        "Hermes Studio extension is not installed or active. Context copied to clipboard."
+      );
+    }
   }
 
   private async handleOpenFileLocation(
@@ -281,7 +371,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       const pos = new vscode.Position(Math.max(0, line - 1), Math.max(0, column - 1));
       await vscode.window.showTextDocument(doc, {
         selection: new vscode.Range(pos, pos),
-        revealIfVisible: true,
+        preview: false,
       });
     } catch (err: any) {
       vscode.window.showErrorMessage(`Failed to open file: ${err.message}`);
@@ -318,7 +408,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       const pos = new vscode.Position(Math.max(0, line - 1), 0);
       await vscode.window.showTextDocument(doc, {
         selection: new vscode.Range(pos, pos),
-        revealIfVisible: true,
+        preview: false,
       });
     } catch (err: any) {
       vscode.window.showErrorMessage(`Could not find cited file: ${citationPath}`);

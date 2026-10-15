@@ -7,12 +7,25 @@ export interface DeepWikiGenerationResult {
   modelType: string;
 }
 
+export interface DeepWikiQuestionResult {
+  fullMarkdown: string;
+  modelType: string;
+}
+
 export interface IAIProvider {
   streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
     abortSignal?: AbortSignal
   ): Promise<DeepWikiGenerationResult>;
+
+  streamQuestion(
+    symbol: DeepWikiSymbol,
+    articleMarkdown: string,
+    question: string,
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal
+  ): Promise<DeepWikiQuestionResult>;
 }
 
 export class AIProviderFactory {
@@ -101,6 +114,39 @@ ${symbol.enclosingCode}
 \`\`\`
 
 Generate a complete DeepWiki article for ${symbol.name}.`;
+}
+
+export function buildFollowupSystemPrompt(): string {
+  return `You are DeepWiki, the interactive workspace encyclopedia assistant.
+You are answering a developer's follow-up question regarding a specific code symbol and its architecture.
+
+Guidelines:
+1. Provide a direct, technically accurate, and focused answer based on the symbol's implementation and context.
+2. If relevant, include concise code snippets with proper syntax highlighting.
+3. Be clear, succinct, and informative.`;
+}
+
+export function buildFollowupUserPrompt(
+  symbol: DeepWikiSymbol,
+  articleMarkdown: string,
+  question: string
+): string {
+  const summarySnippet = articleMarkdown ? articleMarkdown.slice(0, 1500) : "";
+  return `Context - Code Symbol:
+Name: ${symbol.name} (${symbol.kind})
+File: ${symbol.relativePath}
+Language: ${symbol.languageId}
+
+Source Code:
+\`\`\`${symbol.languageId}
+${symbol.enclosingCode}
+\`\`\`
+
+${summarySnippet ? `DeepWiki Article Summary:\n${summarySnippet}\n` : ""}
+Follow-up Question:
+${question}
+
+Please answer the question clearly and directly.`;
 }
 
 export function parseFollowupQuestions(text: string): {
@@ -212,10 +258,85 @@ export class OllamaProvider implements IAIProvider {
       modelType: `Ollama (${model})`,
     };
   }
+
+  async streamQuestion(
+    symbol: DeepWikiSymbol,
+    articleMarkdown: string,
+    question: string,
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal
+  ): Promise<DeepWikiQuestionResult> {
+    const config = vscode.workspace.getConfiguration("deepwiki");
+    const baseUrl = config.get<string>("apiBaseUrl", "http://localhost:11434");
+    const model = config.get<string>("model", "llama3.2");
+
+    const endpoint = `${baseUrl.replace(/\/+$/, "")}/api/generate`;
+    const prompt = `${buildFollowupSystemPrompt()}\n\n${buildFollowupUserPrompt(symbol, articleMarkdown, question)}`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        prompt,
+        stream: true,
+      }),
+      signal: abortSignal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      const apiKey = config.get<string>("apiKey", "");
+      if (
+        (response.status === 404 || response.status === 401 || response.status === 403) &&
+        (apiKey || !baseUrl.includes("11434"))
+      ) {
+        const fallback = new OpenAICompatibleProvider();
+        return fallback.streamQuestion(symbol, articleMarkdown, question, onDelta, abortSignal);
+      }
+      throw new Error(`Ollama error (${response.status}): ${errText}`);
+    }
+
+    if (!response.body) {
+      throw new Error("No response body received from Ollama");
+    }
+
+    let fullText = "";
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.response) {
+            fullText += parsed.response;
+            onDelta(parsed.response);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    return {
+      fullMarkdown: fullText,
+      modelType: `Ollama (${model})`,
+    };
+  }
 }
 
 /**
- * OpenAI / Compatible Provider (DeepSeek, Groq, OpenAI, etc.)
+ * OpenAI / Compatible Provider (DeepSeek, Groq, OpenAI, CommandCode, etc.)
  */
 export class OpenAICompatibleProvider implements IAIProvider {
   async streamArticle(
@@ -300,6 +421,89 @@ export class OpenAICompatibleProvider implements IAIProvider {
       modelType: `OpenAI (${model})`,
     };
   }
+
+  async streamQuestion(
+    symbol: DeepWikiSymbol,
+    articleMarkdown: string,
+    question: string,
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal
+  ): Promise<DeepWikiQuestionResult> {
+    const config = vscode.workspace.getConfiguration("deepwiki");
+    const baseUrl = config.get<string>("apiBaseUrl", "https://api.openai.com/v1");
+    const apiKey = config.get<string>("apiKey", "");
+    const model = config.get<string>("model", "gpt-4o-mini");
+
+    if (!apiKey && !baseUrl.includes("localhost") && !baseUrl.includes("127.0.0.1")) {
+      throw new Error("API Key is required for OpenAI provider. Set it in DeepWiki settings.");
+    }
+
+    const cleanBase = baseUrl.replace(/\/+$/, "");
+    const endpoint = cleanBase.endsWith("/chat/completions")
+      ? cleanBase
+      : `${cleanBase}/chat/completions`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model,
+        stream: true,
+        messages: [
+          { role: "system", content: buildFollowupSystemPrompt() },
+          { role: "user", content: buildFollowupUserPrompt(symbol, articleMarkdown, question) },
+        ],
+      }),
+      signal: abortSignal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`OpenAI API error (${response.status}): ${errText}`);
+    }
+
+    if (!response.body) {
+      throw new Error("No response body from API");
+    }
+
+    let fullText = "";
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+        if (trimmed === "data: [DONE]") break;
+
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) {
+            fullText += delta;
+            onDelta(delta);
+          }
+        } catch {
+          // ignore chunk parse errors
+        }
+      }
+    }
+
+    return {
+      fullMarkdown: fullText,
+      modelType: `OpenAI (${model})`,
+    };
+  }
 }
 
 /**
@@ -378,6 +582,79 @@ export class AnthropicProvider implements IAIProvider {
       modelType: `Anthropic (${model})`,
     };
   }
+
+  async streamQuestion(
+    symbol: DeepWikiSymbol,
+    articleMarkdown: string,
+    question: string,
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal
+  ): Promise<DeepWikiQuestionResult> {
+    const config = vscode.workspace.getConfiguration("deepwiki");
+    const apiKey = config.get<string>("apiKey", "");
+    const model = config.get<string>("model", "claude-3-5-sonnet-latest");
+
+    if (!apiKey) {
+      throw new Error("Anthropic API Key is required. Set it in DeepWiki settings.");
+    }
+
+    const endpoint = "https://api.anthropic.com/v1/messages";
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        stream: true,
+        system: buildFollowupSystemPrompt(),
+        messages: [{ role: "user", content: buildFollowupUserPrompt(symbol, articleMarkdown, question) }],
+      }),
+      signal: abortSignal,
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Anthropic error (${response.status}): ${err}`);
+    }
+
+    let fullText = "";
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          if (json.type === "content_block_delta" && json.delta?.text) {
+            fullText += json.delta.text;
+            onDelta(json.delta.text);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    return {
+      fullMarkdown: fullText,
+      modelType: `Anthropic (${model})`,
+    };
+  }
 }
 
 /**
@@ -450,6 +727,73 @@ export class GeminiProvider implements IAIProvider {
       modelType: `Gemini (${model})`,
     };
   }
+
+  async streamQuestion(
+    symbol: DeepWikiSymbol,
+    articleMarkdown: string,
+    question: string,
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal
+  ): Promise<DeepWikiQuestionResult> {
+    const config = vscode.workspace.getConfiguration("deepwiki");
+    const apiKey = config.get<string>("apiKey", "");
+    const model = config.get<string>("model", "gemini-2.0-flash");
+
+    if (!apiKey) {
+      throw new Error("Gemini API Key is required. Set it in DeepWiki settings.");
+    }
+
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: buildFollowupSystemPrompt() }] },
+        contents: [{ role: "user", parts: [{ text: buildFollowupUserPrompt(symbol, articleMarkdown, question) }] }],
+      }),
+      signal: abortSignal,
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Gemini error (${response.status}): ${err}`);
+    }
+
+    let fullText = "";
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (textPart) {
+            fullText += textPart;
+            onDelta(textPart);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    return {
+      fullMarkdown: fullText,
+      modelType: `Gemini (${model})`,
+    };
+  }
 }
 
 /**
@@ -465,7 +809,6 @@ export class DevinBridgeProvider implements IAIProvider {
     let port = config.get<number>("devinBridgePort", 0);
 
     if (port === 0) {
-      // Auto-detect local language server port by reading Devin state or fallback to default Ollama
       port = 3000;
     }
 
@@ -494,11 +837,21 @@ export class DevinBridgeProvider implements IAIProvider {
         };
       }
     } catch {
-      // Fallback to local Ollama if Devin bridge daemon is not running
+      // Fallback
     }
 
-    // Graceful fallback
     const fallback = new OllamaProvider();
     return fallback.streamArticle(symbol, onDelta, abortSignal);
+  }
+
+  async streamQuestion(
+    symbol: DeepWikiSymbol,
+    articleMarkdown: string,
+    question: string,
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal
+  ): Promise<DeepWikiQuestionResult> {
+    const fallback = new OllamaProvider();
+    return fallback.streamQuestion(symbol, articleMarkdown, question, onDelta, abortSignal);
   }
 }

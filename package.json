@@ -135,12 +135,13 @@
         "deepwiki.followupAction": {
           "type": "string",
           "enum": [
+            "inline",
             "hermes",
             "deepwiki",
             "clipboard"
           ],
-          "default": "hermes",
-          "description": "Action when clicking an 'Explore Further' question chip: open new chat in Hermes Studio, explore in DeepWiki, or copy to clipboard."
+          "default": "inline",
+          "description": "Action when clicking an 'Explore Further' question chip: 'inline' (streams answer directly in DeepWiki view), 'hermes' (opens Hermes Studio), 'deepwiki' (creates new DeepWiki article), or 'clipboard'."
         }
       }
     }
