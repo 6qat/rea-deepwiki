@@ -1,21 +1,17 @@
 import * as vscode from "vscode";
-import { DeepWikiViewProvider } from "./webview/wikiViewProvider";
 import { SymbolResolver } from "./context/symbolResolver";
+import { DeepWikiViewProvider } from "./webview/wikiViewProvider";
 
 export function activate(context: vscode.ExtensionContext) {
   const provider = new DeepWikiViewProvider(context.extensionUri);
 
   // Register the sidebar webview view provider
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      DeepWikiViewProvider.viewType,
-      provider,
-      {
-        webviewOptions: {
-          retainContextWhenHidden: true,
-        },
-      }
-    )
+    vscode.window.registerWebviewViewProvider(DeepWikiViewProvider.viewType, provider, {
+      webviewOptions: {
+        retainContextWhenHidden: true,
+      },
+    }),
   );
 
   // Command: Open Symbol in DeepWiki
@@ -54,14 +50,14 @@ export function activate(context: vscode.ExtensionContext) {
         };
         await provider.loadSymbol(fallbackSymbol);
       }
-    })
+    }),
   );
 
   // Command: Open in Editor Tab
   context.subscriptions.push(
     vscode.commands.registerCommand("deepwiki.openWikiTab", () => {
       provider.openInEditorTab();
-    })
+    }),
   );
 
   // Command: Refresh Article
@@ -74,27 +70,34 @@ export function activate(context: vscode.ExtensionContext) {
           await provider.loadSymbol(symbol);
         }
       }
-    })
+    }),
   );
 
   // Hover Provider (optional tooltip integration)
   context.subscriptions.push(
-    vscode.languages.registerHoverProvider({ scheme: "file" }, {
-      provideHover(document, position) {
-        const wordRange = document.getWordRangeAtPosition(position);
-        if (!wordRange) return undefined;
+    vscode.languages.registerHoverProvider(
+      { scheme: "file" },
+      {
+        provideHover(document, position) {
+          const wordRange = document.getWordRangeAtPosition(position);
+          if (!wordRange) return undefined;
 
-        const word = document.getText(wordRange);
-        if (word.length < 3) return undefined;
+          const word = document.getText(wordRange);
+          if (word.length < 3) return undefined;
 
-        const args = encodeURIComponent(JSON.stringify([{ lineNumber: position.line + 1, column: position.character + 1 }]));
-        const cmdUri = vscode.Uri.parse(`command:deepwiki.openSymbol?${args}`);
+          const args = encodeURIComponent(
+            JSON.stringify([{ lineNumber: position.line + 1, column: position.character + 1 }]),
+          );
+          const cmdUri = vscode.Uri.parse(`command:deepwiki.openSymbol?${args}`);
 
-        const md = new vscode.MarkdownString(`[$(book) Read about **${word}** in DeepWiki](${cmdUri})`);
-        md.isTrusted = true;
-        return new vscode.Hover(md, wordRange);
-      }
-    })
+          const md = new vscode.MarkdownString(
+            `[$(book) Read about **${word}** in DeepWiki](${cmdUri})`,
+          );
+          md.isTrusted = true;
+          return new vscode.Hover(md, wordRange);
+        },
+      },
+    ),
   );
 }
 

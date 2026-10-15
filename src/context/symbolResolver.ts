@@ -1,11 +1,11 @@
-import * as vscode from "vscode";
 import * as path from "path";
-import { DeepWikiSymbol, SymbolRange } from "../types";
+import * as vscode from "vscode";
+import type { DeepWikiSymbol, SymbolRange } from "../types";
 
 export class SymbolResolver {
   public static async resolveSymbolAtCursor(
     editor: vscode.TextEditor,
-    explicitPosition?: vscode.Position
+    explicitPosition?: vscode.Position,
   ): Promise<DeepWikiSymbol | null> {
     const document = editor.document;
     const position = explicitPosition || editor.selection.active;
@@ -51,9 +51,10 @@ export class SymbolResolver {
 
     let enclosingRange: vscode.Range = targetRange;
     try {
-      const docSymbols = await vscode.commands.executeCommand<
-        vscode.DocumentSymbol[]
-      >("vscode.executeDocumentSymbolProvider", targetUri);
+      const docSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+        "vscode.executeDocumentSymbolProvider",
+        targetUri,
+      );
 
       if (docSymbols && docSymbols.length > 0) {
         const match = this.findMatchingSymbol(docSymbols, targetRange.start);
@@ -86,7 +87,7 @@ export class SymbolResolver {
     const startLine = Math.max(0, enclosingRange.start.line - 10);
     const endLine = Math.min(
       targetDoc.lineCount - 1,
-      Math.max(enclosingRange.end.line + 10, startLine + 80)
+      Math.max(enclosingRange.end.line + 10, startLine + 80),
     );
 
     const contextLines: string[] = [];
@@ -121,7 +122,7 @@ export class SymbolResolver {
 
   private static findMatchingSymbol(
     symbols: vscode.DocumentSymbol[],
-    pos: vscode.Position
+    pos: vscode.Position,
   ): vscode.DocumentSymbol | null {
     for (const sym of symbols) {
       if (sym.range.contains(pos)) {

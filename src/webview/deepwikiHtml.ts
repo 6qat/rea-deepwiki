@@ -2,23 +2,19 @@ import * as vscode from "vscode";
 
 export function getDeepWikiWebviewContent(
   webview: vscode.Webview,
-  extensionUri: vscode.Uri
+  extensionUri: vscode.Uri,
 ): string {
-  const cssUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "media", "deepwiki.css")
-  );
+  const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "deepwiki.css"));
   const markedUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "media", "marked.min.js")
+    vscode.Uri.joinPath(extensionUri, "media", "marked.min.js"),
   );
   const highlightUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "media", "highlight.min.js")
+    vscode.Uri.joinPath(extensionUri, "media", "highlight.min.js"),
   );
   const scriptUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "media", "deepwikiWebview.js")
+    vscode.Uri.joinPath(extensionUri, "media", "deepwikiWebview.js"),
   );
-  const logoUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "media", "deepwiki.svg")
-  );
+  const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "deepwiki.svg"));
 
   const nonce = getNonce();
 
@@ -139,8 +135,7 @@ export function getDeepWikiWebviewContent(
 
 function getNonce(): string {
   let text = "";
-  const possible =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   for (let i = 0; i < 32; i++) {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }

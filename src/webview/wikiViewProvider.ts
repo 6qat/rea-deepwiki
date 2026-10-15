@@ -1,12 +1,7 @@
 import * as vscode from "vscode";
-import * as path from "path";
-import {
-  DeepWikiArticle,
-  DeepWikiSymbol,
-  WebviewToExtensionMessage,
-} from "../types";
-import { getDeepWikiWebviewContent } from "./deepwikiHtml";
 import { AIProviderFactory } from "../providers/aiProvider";
+import type { DeepWikiArticle, DeepWikiSymbol, WebviewToExtensionMessage } from "../types";
+import { getDeepWikiWebviewContent } from "./deepwikiHtml";
 
 export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "deepwiki.wikiView";
@@ -23,7 +18,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): void {
     this._view = webviewView;
 
@@ -32,10 +27,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, "media")],
     };
 
-    webviewView.webview.html = getDeepWikiWebviewContent(
-      webviewView.webview,
-      this._extensionUri
-    );
+    webviewView.webview.html = getDeepWikiWebviewContent(webviewView.webview, this._extensionUri);
 
     this.setupMessageListener(webviewView.webview);
 
@@ -59,19 +51,12 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
         enableScripts: true,
         retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, "media")],
-      }
+      },
     );
 
-    this._panel.iconPath = vscode.Uri.joinPath(
-      this._extensionUri,
-      "media",
-      "deepwiki.svg"
-    );
+    this._panel.iconPath = vscode.Uri.joinPath(this._extensionUri, "media", "deepwiki.svg");
 
-    this._panel.webview.html = getDeepWikiWebviewContent(
-      this._panel.webview,
-      this._extensionUri
-    );
+    this._panel.webview.html = getDeepWikiWebviewContent(this._panel.webview, this._extensionUri);
 
     this.setupMessageListener(this._panel.webview);
 
@@ -153,7 +138,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
             delta,
           });
         },
-        this._currentAbortController.signal
+        this._currentAbortController.signal,
       );
 
       const article: DeepWikiArticle = {
@@ -232,14 +217,10 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async handleFollowupClick(
-    question: string,
-    providedQaId?: string
-  ): Promise<void> {
+  private async handleFollowupClick(question: string, providedQaId?: string): Promise<void> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const followupAction = config.get<string>("followupAction", "inline");
-    const current =
-      this._historyIndex >= 0 ? this._history[this._historyIndex] : undefined;
+    const current = this._historyIndex >= 0 ? this._history[this._historyIndex] : undefined;
 
     if (!current) {
       vscode.window.showWarningMessage("No active symbol to ask questions about.");
@@ -296,7 +277,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
             delta,
           });
         },
-        this._currentQaAbortController.signal
+        this._currentQaAbortController.signal,
       );
 
       if (!current.qas) {
@@ -325,12 +306,8 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async handleOpenInHermes(
-    question: string,
-    answer?: string
-  ): Promise<void> {
-    const current =
-      this._historyIndex >= 0 ? this._history[this._historyIndex] : undefined;
+  private async handleOpenInHermes(question: string, answer?: string): Promise<void> {
+    const current = this._historyIndex >= 0 ? this._history[this._historyIndex] : undefined;
 
     const promptText = current
       ? `Regarding \`${current.symbol.name}\` (${current.symbol.kind}) in \`${current.symbol.relativePath}\`:\n\nQuestion: ${question}${
@@ -351,11 +328,11 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
         await vscode.commands.executeCommand("hermesStudio.openChat");
       }
       vscode.window.showInformationMessage(
-        `Opened new chat in Hermes Studio. Question context copied to clipboard.`
+        `Opened new chat in Hermes Studio. Question context copied to clipboard.`,
       );
     } else {
       vscode.window.showWarningMessage(
-        "Hermes Studio extension is not installed or active. Context copied to clipboard."
+        "Hermes Studio extension is not installed or active. Context copied to clipboard.",
       );
     }
   }
@@ -363,7 +340,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
   private async handleOpenFileLocation(
     uriString: string,
     line: number,
-    column: number = 1
+    column: number = 1,
   ): Promise<void> {
     try {
       const uri = vscode.Uri.parse(uriString);
@@ -378,10 +355,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async handleOpenFileCitation(
-    citationPath: string,
-    line: number
-  ): Promise<void> {
+  private async handleOpenFileCitation(citationPath: string, line: number): Promise<void> {
     try {
       let targetUri: vscode.Uri | undefined;
       const workspaceFolders = vscode.workspace.workspaceFolders;

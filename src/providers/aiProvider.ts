@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { DeepWikiSymbol } from "../types";
+import type { DeepWikiSymbol } from "../types";
 
 export interface DeepWikiGenerationResult {
   fullMarkdown: string;
@@ -16,7 +16,7 @@ export interface IAIProvider {
   streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiGenerationResult>;
 
   streamQuestion(
@@ -24,7 +24,7 @@ export interface IAIProvider {
     articleMarkdown: string,
     question: string,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiQuestionResult>;
 }
 
@@ -70,9 +70,7 @@ export class AIProviderFactory {
     }
     if (
       apiKey ||
-      (baseUrl &&
-        !baseUrl.includes("localhost:11434") &&
-        !baseUrl.includes("127.0.0.1:11434"))
+      (baseUrl && !baseUrl.includes("localhost:11434") && !baseUrl.includes("127.0.0.1:11434"))
     ) {
       return new OpenAICompatibleProvider();
     }
@@ -129,7 +127,7 @@ Guidelines:
 export function buildFollowupUserPrompt(
   symbol: DeepWikiSymbol,
   articleMarkdown: string,
-  question: string
+  question: string,
 ): string {
   const summarySnippet = articleMarkdown ? articleMarkdown.slice(0, 1500) : "";
   return `Context - Code Symbol:
@@ -187,7 +185,7 @@ export class OllamaProvider implements IAIProvider {
   async streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiGenerationResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const baseUrl = config.get<string>("apiBaseUrl", "http://localhost:11434");
@@ -264,7 +262,7 @@ export class OllamaProvider implements IAIProvider {
     articleMarkdown: string,
     question: string,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiQuestionResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const baseUrl = config.get<string>("apiBaseUrl", "http://localhost:11434");
@@ -342,7 +340,7 @@ export class OpenAICompatibleProvider implements IAIProvider {
   async streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiGenerationResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const baseUrl = config.get<string>("apiBaseUrl", "https://api.openai.com/v1");
@@ -427,7 +425,7 @@ export class OpenAICompatibleProvider implements IAIProvider {
     articleMarkdown: string,
     question: string,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiQuestionResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const baseUrl = config.get<string>("apiBaseUrl", "https://api.openai.com/v1");
@@ -513,7 +511,7 @@ export class AnthropicProvider implements IAIProvider {
   async streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiGenerationResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const apiKey = config.get<string>("apiKey", "");
@@ -588,7 +586,7 @@ export class AnthropicProvider implements IAIProvider {
     articleMarkdown: string,
     question: string,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiQuestionResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const apiKey = config.get<string>("apiKey", "");
@@ -611,7 +609,9 @@ export class AnthropicProvider implements IAIProvider {
         max_tokens: 4096,
         stream: true,
         system: buildFollowupSystemPrompt(),
-        messages: [{ role: "user", content: buildFollowupUserPrompt(symbol, articleMarkdown, question) }],
+        messages: [
+          { role: "user", content: buildFollowupUserPrompt(symbol, articleMarkdown, question) },
+        ],
       }),
       signal: abortSignal,
     });
@@ -664,7 +664,7 @@ export class GeminiProvider implements IAIProvider {
   async streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiGenerationResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const apiKey = config.get<string>("apiKey", "");
@@ -733,7 +733,7 @@ export class GeminiProvider implements IAIProvider {
     articleMarkdown: string,
     question: string,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiQuestionResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     const apiKey = config.get<string>("apiKey", "");
@@ -749,7 +749,12 @@ export class GeminiProvider implements IAIProvider {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: buildFollowupSystemPrompt() }] },
-        contents: [{ role: "user", parts: [{ text: buildFollowupUserPrompt(symbol, articleMarkdown, question) }] }],
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: buildFollowupUserPrompt(symbol, articleMarkdown, question) }],
+          },
+        ],
       }),
       signal: abortSignal,
     });
@@ -803,7 +808,7 @@ export class DevinBridgeProvider implements IAIProvider {
   async streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiGenerationResult> {
     const config = vscode.workspace.getConfiguration("deepwiki");
     let port = config.get<number>("devinBridgePort", 0);
@@ -849,7 +854,7 @@ export class DevinBridgeProvider implements IAIProvider {
     articleMarkdown: string,
     question: string,
     onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
   ): Promise<DeepWikiQuestionResult> {
     const fallback = new OllamaProvider();
     return fallback.streamQuestion(symbol, articleMarkdown, question, onDelta, abortSignal);

@@ -1,5 +1,5 @@
-(function () {
-  // @ts-ignore
+(() => {
+  // @ts-expect-error
   const vscode = acquireVsCodeApi();
 
   const welcomeContainer = document.getElementById("welcome-container");
@@ -29,7 +29,7 @@
 
   // Configure marked with highlight.js syntax highlighting
   if (typeof marked !== "undefined") {
-    // @ts-ignore
+    // @ts-expect-error
     marked.use({
       renderer: {
         code({ text, lang }) {
@@ -289,7 +289,7 @@
 
   function renderMarkdown(md) {
     if (typeof marked !== "undefined") {
-      // @ts-ignore
+      // @ts-expect-error
       articleContent.innerHTML = marked.parse(md);
       bindCitationLinks(articleContent);
     } else {
