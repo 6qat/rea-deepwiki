@@ -253,7 +253,7 @@ export class OllamaProvider implements IAIProvider {
     return {
       fullMarkdown: markdown,
       followupQuestions: questions,
-      modelType: `Ollama (${model})`,
+      modelType: model,
     };
   }
 
@@ -328,7 +328,7 @@ export class OllamaProvider implements IAIProvider {
 
     return {
       fullMarkdown: fullText,
-      modelType: `Ollama (${model})`,
+      modelType: model,
     };
   }
 }
@@ -348,7 +348,7 @@ export class OpenAICompatibleProvider implements IAIProvider {
     const model = config.get<string>("model", "gpt-4o-mini");
 
     if (!apiKey && !baseUrl.includes("localhost") && !baseUrl.includes("127.0.0.1")) {
-      throw new Error("API Key is required for OpenAI provider. Set it in DeepWiki settings.");
+      throw new Error("API Key is required. Set it in DeepWiki settings.");
     }
 
     const cleanBase = baseUrl.replace(/\/+$/, "");
@@ -374,7 +374,7 @@ export class OpenAICompatibleProvider implements IAIProvider {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OpenAI API error (${response.status}): ${errText}`);
+      throw new Error(`API error (${response.status}): ${errText}`);
     }
 
     if (!response.body) {
@@ -416,7 +416,7 @@ export class OpenAICompatibleProvider implements IAIProvider {
     return {
       fullMarkdown: markdown,
       followupQuestions: questions,
-      modelType: `OpenAI (${model})`,
+      modelType: model,
     };
   }
 
@@ -433,7 +433,7 @@ export class OpenAICompatibleProvider implements IAIProvider {
     const model = config.get<string>("model", "gpt-4o-mini");
 
     if (!apiKey && !baseUrl.includes("localhost") && !baseUrl.includes("127.0.0.1")) {
-      throw new Error("API Key is required for OpenAI provider. Set it in DeepWiki settings.");
+      throw new Error("API Key is required. Set it in DeepWiki settings.");
     }
 
     const cleanBase = baseUrl.replace(/\/+$/, "");
@@ -459,7 +459,7 @@ export class OpenAICompatibleProvider implements IAIProvider {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OpenAI API error (${response.status}): ${errText}`);
+      throw new Error(`API error (${response.status}): ${errText}`);
     }
 
     if (!response.body) {
@@ -499,7 +499,7 @@ export class OpenAICompatibleProvider implements IAIProvider {
 
     return {
       fullMarkdown: fullText,
-      modelType: `OpenAI (${model})`,
+      modelType: model,
     };
   }
 }
@@ -577,7 +577,7 @@ export class AnthropicProvider implements IAIProvider {
     return {
       fullMarkdown: markdown,
       followupQuestions: questions,
-      modelType: `Anthropic (${model})`,
+      modelType: model,
     };
   }
 
@@ -652,7 +652,7 @@ export class AnthropicProvider implements IAIProvider {
 
     return {
       fullMarkdown: fullText,
-      modelType: `Anthropic (${model})`,
+      modelType: model,
     };
   }
 }
@@ -724,7 +724,7 @@ export class GeminiProvider implements IAIProvider {
     return {
       fullMarkdown: markdown,
       followupQuestions: questions,
-      modelType: `Gemini (${model})`,
+      modelType: model,
     };
   }
 
@@ -796,7 +796,7 @@ export class GeminiProvider implements IAIProvider {
 
     return {
       fullMarkdown: fullText,
-      modelType: `Gemini (${model})`,
+      modelType: model,
     };
   }
 }

@@ -2,7 +2,7 @@
   "name": "deepwiki",
   "displayName": "DeepWiki",
   "description": "Interactive Code Encyclopedia & Symbol Documentation for VS Code",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "morluto",
   "repository": {
     "type": "git",

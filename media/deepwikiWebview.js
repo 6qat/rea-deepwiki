@@ -100,6 +100,7 @@
 
         if (msg.modelType) {
           modelBadgeEl.textContent = msg.modelType;
+          modelBadgeEl.title = `Model: ${msg.modelType}`;
           modelBadgeEl.style.display = "inline-flex";
         }
 
@@ -257,6 +258,7 @@
           }
           if (msg.modelType && entry.badgeEl) {
             entry.badgeEl.textContent = msg.modelType;
+            entry.badgeEl.title = `Model: ${msg.modelType}`;
           }
           enhanceCodeBlocks(entry.card);
           entry.card.classList.remove("active");
@@ -460,7 +462,7 @@
           <span>${escapeHtml(qa.question)}</span>
         </div>
         <div class="deepwiki-qa-card-actions">
-          <span class="deepwiki-qa-model-badge">${escapeHtml(qa.modelType || "DeepWiki")}</span>
+          <span class="deepwiki-qa-model-badge" title="Model: ${escapeHtml(qa.modelType || "DeepWiki")}">${escapeHtml(qa.modelType || "DeepWiki")}</span>
           <button class="deepwiki-qa-action-btn btn-copy-qa" title="Copy Answer">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             <span>Copy</span>
