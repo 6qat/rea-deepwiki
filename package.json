@@ -4,6 +4,8 @@
   "description": "Interactive Code Encyclopedia & Symbol Documentation for VS Code",
   "version": "0.1.1",
   "publisher": "morluto",
+  "publisherDisplayName": "Ceschiatti (6qat)",
+  "author": "Ceschiatti (6qat)",
   "repository": {
     "type": "git",
     "url": "https://github.com/6qat/rea-deepwiki"
