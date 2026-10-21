@@ -188,15 +188,6 @@ export function registerDiagnosticCommands(
             await vscode.commands.executeCommand("hermesStudio.openChat");
           }
 
-          // Attempt clipboard paste action after chat panel reveals
-          setTimeout(async () => {
-            try {
-              await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
-            } catch {
-              // Ignore if webview doesn't accept active editor paste command
-            }
-          }, 250);
-
           vscode.window.showInformationMessage(
             "Hermes Studio opened. Problem context copied to clipboard (press Ctrl+V to paste).",
           );

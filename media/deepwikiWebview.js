@@ -32,6 +32,10 @@
     // @ts-expect-error
     marked.use({
       renderer: {
+        // Articles quote repo code, so model output is untrusted: never let raw HTML through.
+        html({ text }) {
+          return escapeHtml(text);
+        },
         code({ text, lang }) {
           let highlighted = text;
           if (typeof hljs !== "undefined") {
@@ -87,7 +91,7 @@
           articleContent.style.display = "block";
         }
         currentMarkdown += msg.delta;
-        renderMarkdown(currentMarkdown);
+        scheduleRender();
         break;
 
       case "streamComplete":
@@ -288,6 +292,18 @@
         break;
     }
   });
+
+  // One render per frame: re-parsing and re-highlighting on every token freezes the panel.
+  let renderQueued = false;
+  function scheduleRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      // streamComplete already rendered and enhanced the final text; a late render would undo it.
+      if (isStreaming) renderMarkdown(currentMarkdown);
+    });
+  }
 
   function renderMarkdown(md) {
     if (typeof marked !== "undefined") {

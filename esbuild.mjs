@@ -27,12 +27,23 @@ async function main() {
 
   // Bundle highlight.js for webview
   await esbuild.build({
-    entryPoints: ["node_modules/highlight.js/lib/index.js"],
+    entryPoints: ["node_modules/highlight.js/lib/common.js"],
     bundle: true,
     minify: true,
     format: "iife",
     globalName: "hljs",
     outfile: "media/highlight.min.js",
+    logLevel: "info",
+  });
+
+  // Bundle marked for webview (the webview has no module loader)
+  await esbuild.build({
+    entryPoints: ["node_modules/marked/lib/marked.esm.js"],
+    bundle: true,
+    minify: true,
+    format: "iife",
+    globalName: "marked",
+    outfile: "media/marked.min.js",
     logLevel: "info",
   });
 }

@@ -104,7 +104,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  public async loadSymbol(symbol: DeepWikiSymbol): Promise<void> {
+  public async loadSymbol(symbol: DeepWikiSymbol, pushHistory = true): Promise<void> {
     // Reveal view
     if (this._view) {
       this._view.show?.(true);
@@ -151,11 +151,16 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       };
 
       // Push to history
-      if (this._historyIndex < this._history.length - 1) {
-        this._history = this._history.slice(0, this._historyIndex + 1);
+      if (pushHistory) {
+        if (this._historyIndex < this._history.length - 1) {
+          this._history = this._history.slice(0, this._historyIndex + 1);
+        }
+        this._history.push(article);
+        this._historyIndex = this._history.length - 1;
+      } else if (this._historyIndex >= 0) {
+        // Refresh replaces the current entry; pushing would make Back a duplicate.
+        this._history[this._historyIndex] = article;
       }
-      this._history.push(article);
-      this._historyIndex = this._history.length - 1;
 
       this.displayArticle(article, true);
     } catch (err: any) {
@@ -210,11 +215,12 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private async refreshCurrentArticle(): Promise<void> {
-    if (this._historyIndex >= 0 && this._history[this._historyIndex]) {
-      const current = this._history[this._historyIndex];
-      await this.loadSymbol(current.symbol);
-    }
+  /** Regenerates the article on screen. Returns false when there is none. */
+  public async refreshCurrentArticle(): Promise<boolean> {
+    const current = this._history[this._historyIndex];
+    if (!current) return false;
+    await this.loadSymbol(current.symbol, false);
+    return true;
   }
 
   private async handleFollowupClick(question: string, providedQaId?: string): Promise<void> {

@@ -38,7 +38,8 @@
         {
           "id": "deepwiki.wikiView",
           "name": "DeepWiki",
-          "type": "webview"
+          "type": "webview",
+          "icon": "media/deepwiki.svg"
         }
       ]
     },
@@ -59,14 +60,6 @@
         "title": "Refresh Article",
         "category": "DeepWiki",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "deepwiki.openFileLocation",
-        "title": "DeepWiki: Open File Location"
-      },
-      {
-        "command": "deepwiki.openFileCitation",
-        "title": "DeepWiki: Open File Citation"
       },
       {
         "command": "deepwiki.askHermesDiagnostic",
@@ -132,7 +125,8 @@
         "deepwiki.apiKey": {
           "type": "string",
           "default": "",
-          "description": "API Key for cloud providers (OpenAI, Anthropic, Gemini)."
+          "scope": "machine",
+          "description": "API Key for cloud providers (OpenAI, Anthropic, Gemini). Machine-scoped so VS Code Settings Sync never copies it."
         },
         "deepwiki.apiBaseUrl": {
           "type": "string",
@@ -161,25 +155,22 @@
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "package": "node esbuild.mjs --production && pnpm dlx @vscode/vsce package --no-dependencies",
+    "typecheck": "tsc",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"src/**/*.test.ts\"",
+    "package": "tsc && node esbuild.mjs --production && pnpm dlx @vscode/vsce package --no-dependencies",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write ."
   },
   "dependencies": {
     "highlight.js": "^11.12.0",
-    "marked": "^15.0.7"
+    "marked": "^18.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@types/node": "^20.17.0",
-    "@types/vscode": "^1.85.0",
-    "esbuild": "^0.25.0",
-    "typescript": "^5.7.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
+    "@types/node": "^26.6.5",
+    "@types/vscode": "1.85.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
   }
 }

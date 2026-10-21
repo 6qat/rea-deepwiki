@@ -21,38 +21,47 @@ export function activate(context: vscode.ExtensionContext) {
   // Command: Open Symbol in DeepWiki
   context.subscriptions.push(
     vscode.commands.registerCommand("deepwiki.openSymbol", async (arg?: any) => {
-      const editor = vscode.window.activeTextEditor;
+      // A hover link names its own document: the hovered editor is not always the focused one.
+      const editor =
+        vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === arg?.uri) ??
+        vscode.window.activeTextEditor;
 
       if (editor) {
-        let explicitPos: vscode.Position | undefined;
-        if (arg && typeof arg.lineNumber === "number" && typeof arg.column === "number") {
-          explicitPos = new vscode.Position(arg.lineNumber - 1, arg.column - 1);
-        }
+        const position =
+          typeof arg?.lineNumber === "number" && typeof arg?.column === "number"
+            ? new vscode.Position(arg.lineNumber - 1, arg.column - 1)
+            : editor.selection.active;
 
-        const symbol = await SymbolResolver.resolveSymbolAtCursor(editor, explicitPos);
+        const symbol = await SymbolResolver.resolveSymbolAt(editor.document, position);
         if (symbol) {
           await provider.loadSymbol(symbol);
           return;
         }
       }
 
-      // If no cursor symbol could be identified, offer an input prompt
+      // No symbol under the cursor: ask for a name and find its definition in the workspace.
       const input = await vscode.window.showInputBox({
         prompt: "Enter a function, class, or symbol name to look up in DeepWiki",
         placeHolder: "e.g. handleRequest, AuthController, streamData",
       });
+      const name = input?.trim();
+      if (!name) return;
 
-      if (input?.trim()) {
-        const fallbackSymbol = {
-          name: input.trim(),
-          kind: "Symbol",
-          uri: editor ? editor.document.uri.toString() : "",
-          relativePath: editor ? vscode.workspace.asRelativePath(editor.document.uri) : "",
-          selectionRange: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
-          enclosingCode: editor ? editor.document.getText().slice(0, 3000) : "",
-          languageId: editor ? editor.document.languageId : "plaintext",
-        };
-        await provider.loadSymbol(fallbackSymbol);
+      const hits =
+        (await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+          "vscode.executeWorkspaceSymbolProvider",
+          name,
+        )) ?? [];
+      const hit = hits.find((h) => h.name === name) ?? hits[0];
+      if (!hit) {
+        vscode.window.showWarningMessage(`No symbol named "${name}" found in the workspace.`);
+        return;
+      }
+
+      const document = await vscode.workspace.openTextDocument(hit.location.uri);
+      const symbol = await SymbolResolver.resolveSymbolAt(document, hit.location.range.start);
+      if (symbol) {
+        await provider.loadSymbol(symbol);
       }
     }),
   );
@@ -67,9 +76,13 @@ export function activate(context: vscode.ExtensionContext) {
   // Command: Refresh Article
   context.subscriptions.push(
     vscode.commands.registerCommand("deepwiki.refresh", async () => {
+      if (await provider.refreshCurrentArticle()) return;
       const editor = vscode.window.activeTextEditor;
       if (editor) {
-        const symbol = await SymbolResolver.resolveSymbolAtCursor(editor);
+        const symbol = await SymbolResolver.resolveSymbolAt(
+          editor.document,
+          editor.selection.active,
+        );
         if (symbol) {
           await provider.loadSymbol(symbol);
         }
@@ -90,14 +103,20 @@ export function activate(context: vscode.ExtensionContext) {
           if (word.length < 3) return undefined;
 
           const args = encodeURIComponent(
-            JSON.stringify([{ lineNumber: position.line + 1, column: position.character + 1 }]),
+            JSON.stringify([
+              {
+                uri: document.uri.toString(),
+                lineNumber: position.line + 1,
+                column: position.character + 1,
+              },
+            ]),
           );
           const cmdUri = vscode.Uri.parse(`command:deepwiki.openSymbol?${args}`);
 
           const md = new vscode.MarkdownString(
             `[$(book) Read about **${word}** in DeepWiki](${cmdUri})`,
           );
-          md.isTrusted = true;
+          md.isTrusted = { enabledCommands: ["deepwiki.openSymbol"] };
           return new vscode.Hover(md, wordRange);
         },
       },

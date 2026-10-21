@@ -1,5 +1,15 @@
 import * as vscode from "vscode";
 import type { DeepWikiSymbol } from "../types";
+import {
+  anthropicRequest,
+  type ChatRequest,
+  geminiRequest,
+  ollamaRequest,
+  openAiRequest,
+  pickProvider,
+  type Settings,
+} from "./requests";
+import { parseFollowupQuestions, streamLines } from "./streaming";
 
 export interface DeepWikiGenerationResult {
   fullMarkdown: string;
@@ -28,55 +38,15 @@ export interface IAIProvider {
   ): Promise<DeepWikiQuestionResult>;
 }
 
-export class AIProviderFactory {
-  public static createProvider(): IAIProvider {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const providerType = config.get<string>("provider", "auto");
-    const apiKey = config.get<string>("apiKey", "");
-    const baseUrl = config.get<string>("apiBaseUrl", "");
-
-    if (providerType === "openai") {
-      return new OpenAICompatibleProvider();
-    }
-    if (providerType === "anthropic") {
-      return new AnthropicProvider();
-    }
-    if (providerType === "gemini") {
-      return new GeminiProvider();
-    }
-    if (providerType === "devin_bridge") {
-      return new DevinBridgeProvider();
-    }
-
-    // If set to ollama, but configured with an external API key or non-localhost URL (e.g. commandcode.ai, openrouter)
-    if (providerType === "ollama") {
-      if (
-        baseUrl &&
-        !baseUrl.includes("localhost") &&
-        !baseUrl.includes("127.0.0.1") &&
-        (apiKey || baseUrl.includes("/v1"))
-      ) {
-        return new OpenAICompatibleProvider();
-      }
-      return new OllamaProvider();
-    }
-
-    // Auto-detection logic:
-    if (baseUrl.includes("anthropic.com")) {
-      return new AnthropicProvider();
-    }
-    if (baseUrl.includes("generativelanguage.googleapis.com")) {
-      return new GeminiProvider();
-    }
-    if (
-      apiKey ||
-      (baseUrl && !baseUrl.includes("localhost:11434") && !baseUrl.includes("127.0.0.1:11434"))
-    ) {
-      return new OpenAICompatibleProvider();
-    }
-
-    return new OllamaProvider();
-  }
+function readSettings(): Settings {
+  const config = vscode.workspace.getConfiguration("deepwiki");
+  return {
+    providerType: config.get<string>("provider", "auto"),
+    apiKey: config.get<string>("apiKey", ""),
+    baseUrl: config.get<string>("apiBaseUrl", ""),
+    model: config.get<string>("model", ""),
+    devinPort: config.get<number>("devinBridgePort", 0),
+  };
 }
 
 export function buildDeepWikiSystemPrompt(): string {
@@ -147,114 +117,54 @@ ${question}
 Please answer the question clearly and directly.`;
 }
 
-export function parseFollowupQuestions(text: string): {
-  markdown: string;
-  questions: string[];
-} {
-  const delimiter = "<!-- DEEPWIKI_FOLLOWUPS -->";
-  const index = text.indexOf(delimiter);
-  if (index === -1) {
-    return { markdown: text, questions: [] };
+class HttpError extends Error {
+  readonly status: number;
+
+  constructor(label: string, status: number, detail: string) {
+    super(`${label} error (${status}): ${detail}`);
+    this.name = "HttpError";
+    this.status = status;
   }
-
-  const markdown = text.substring(0, index).trim();
-  const followupSection = text.substring(index + delimiter.length).trim();
-
-  const questions: string[] = [];
-  const lines = followupSection.split("\n");
-  for (let line of lines) {
-    line = line.replace(/^\s*[-*•\d.]+\s*/, "").trim();
-    if (line.startsWith('"') && line.endsWith('"')) {
-      line = line.slice(1, -1).trim();
-    }
-    if (line.length > 5) {
-      questions.push(line);
-    }
-  }
-
-  return {
-    markdown,
-    questions: questions.slice(0, 3),
-  };
 }
 
-/**
- * Ollama Provider (Default for local, private development)
- */
-export class OllamaProvider implements IAIProvider {
+async function runRequest(
+  req: ChatRequest,
+  onDelta: (delta: string) => void,
+  abortSignal?: AbortSignal,
+): Promise<string> {
+  const response = await fetch(req.endpoint, {
+    method: "POST",
+    headers: req.headers,
+    body: JSON.stringify(req.body),
+    signal: abortSignal,
+  });
+
+  if (!response.ok) {
+    throw new HttpError(req.label, response.status, await response.text());
+  }
+
+  return streamLines(response, onDelta, req.parseLine);
+}
+
+/** Every provider: build a request, stream it, split off the follow-ups. */
+abstract class ChatProvider implements IAIProvider {
+  protected readonly settings = readSettings();
+
+  protected abstract buildRequest(system: string, user: string): ChatRequest;
+
   async streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
     abortSignal?: AbortSignal,
   ): Promise<DeepWikiGenerationResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const baseUrl = config.get<string>("apiBaseUrl", "http://localhost:11434");
-    const model = config.get<string>("model", "llama3.2");
-
-    const endpoint = `${baseUrl.replace(/\/+$/, "")}/api/generate`;
-    const prompt = `${buildDeepWikiSystemPrompt()}\n\n${buildDeepWikiUserPrompt(symbol)}`;
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        prompt,
-        stream: true,
-      }),
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      const apiKey = config.get<string>("apiKey", "");
-      if (
-        (response.status === 404 || response.status === 401 || response.status === 403) &&
-        (apiKey || !baseUrl.includes("11434"))
-      ) {
-        const fallback = new OpenAICompatibleProvider();
-        return fallback.streamArticle(symbol, onDelta, abortSignal);
-      }
-      throw new Error(`Ollama error (${response.status}): ${errText}`);
-    }
-
-    if (!response.body) {
-      throw new Error("No response body received from Ollama");
-    }
-
-    let fullText = "";
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.response) {
-            fullText += parsed.response;
-            onDelta(parsed.response);
-          }
-        } catch {
-          // ignore chunk parse errors
-        }
-      }
-    }
-
-    const { markdown, questions } = parseFollowupQuestions(fullText);
-    return {
-      fullMarkdown: markdown,
-      followupQuestions: questions,
-      modelType: model,
-    };
+    const { text, model } = await this.generate(
+      buildDeepWikiSystemPrompt(),
+      buildDeepWikiUserPrompt(symbol),
+      onDelta,
+      abortSignal,
+    );
+    const { markdown, questions } = parseFollowupQuestions(text);
+    return { fullMarkdown: markdown, followupQuestions: questions, modelType: model };
   }
 
   async streamQuestion(
@@ -264,589 +174,99 @@ export class OllamaProvider implements IAIProvider {
     onDelta: (delta: string) => void,
     abortSignal?: AbortSignal,
   ): Promise<DeepWikiQuestionResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const baseUrl = config.get<string>("apiBaseUrl", "http://localhost:11434");
-    const model = config.get<string>("model", "llama3.2");
+    const { text, model } = await this.generate(
+      buildFollowupSystemPrompt(),
+      buildFollowupUserPrompt(symbol, articleMarkdown, question),
+      onDelta,
+      abortSignal,
+    );
+    return { fullMarkdown: text, modelType: model };
+  }
 
-    const endpoint = `${baseUrl.replace(/\/+$/, "")}/api/generate`;
-    const prompt = `${buildFollowupSystemPrompt()}\n\n${buildFollowupUserPrompt(symbol, articleMarkdown, question)}`;
+  protected async generate(
+    system: string,
+    user: string,
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal,
+  ): Promise<{ text: string; model: string }> {
+    const req = this.buildRequest(system, user);
+    return { text: await runRequest(req, onDelta, abortSignal), model: req.model };
+  }
+}
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        prompt,
-        stream: true,
-      }),
-      signal: abortSignal,
-    });
+/**
+ * Ollama, with a retry in the OpenAI chat format when the endpoint is not an Ollama server.
+ */
+export class OllamaProvider extends ChatProvider {
+  protected buildRequest(system: string, user: string): ChatRequest {
+    return ollamaRequest(this.settings, system, user);
+  }
 
-    if (!response.ok) {
-      const errText = await response.text();
-      const apiKey = config.get<string>("apiKey", "");
-      if (
-        (response.status === 404 || response.status === 401 || response.status === 403) &&
-        (apiKey || !baseUrl.includes("11434"))
-      ) {
-        const fallback = new OpenAICompatibleProvider();
-        return fallback.streamQuestion(symbol, articleMarkdown, question, onDelta, abortSignal);
+  protected async generate(
+    system: string,
+    user: string,
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal,
+  ): Promise<{ text: string; model: string }> {
+    try {
+      return await super.generate(system, user, onDelta, abortSignal);
+    } catch (err) {
+      if (!(err instanceof HttpError) || ![401, 403, 404].includes(err.status)) {
+        throw err;
       }
-      throw new Error(`Ollama error (${response.status}): ${errText}`);
-    }
-
-    if (!response.body) {
-      throw new Error("No response body received from Ollama");
-    }
-
-    let fullText = "";
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.response) {
-            fullText += parsed.response;
-            onDelta(parsed.response);
-          }
-        } catch {
-          // ignore
-        }
+      if (!this.settings.apiKey && this.settings.baseUrl.includes("11434")) {
+        throw err;
       }
+      const fallback = openAiRequest(this.settings, system, user);
+      return { text: await runRequest(fallback, onDelta, abortSignal), model: fallback.model };
     }
-
-    return {
-      fullMarkdown: fullText,
-      modelType: model,
-    };
   }
 }
 
 /**
  * OpenAI / Compatible Provider (DeepSeek, Groq, OpenAI, CommandCode, etc.)
  */
-export class OpenAICompatibleProvider implements IAIProvider {
-  async streamArticle(
-    symbol: DeepWikiSymbol,
-    onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal,
-  ): Promise<DeepWikiGenerationResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const baseUrl = config.get<string>("apiBaseUrl", "https://api.openai.com/v1");
-    const apiKey = config.get<string>("apiKey", "");
-    const model = config.get<string>("model", "gpt-4o-mini");
-
-    if (!apiKey && !baseUrl.includes("localhost") && !baseUrl.includes("127.0.0.1")) {
-      throw new Error("API Key is required. Set it in DeepWiki settings.");
-    }
-
-    const cleanBase = baseUrl.replace(/\/+$/, "");
-    const endpoint = cleanBase.endsWith("/chat/completions")
-      ? cleanBase
-      : `${cleanBase}/chat/completions`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        messages: [
-          { role: "system", content: buildDeepWikiSystemPrompt() },
-          { role: "user", content: buildDeepWikiUserPrompt(symbol) },
-        ],
-      }),
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`API error (${response.status}): ${errText}`);
-    }
-
-    if (!response.body) {
-      throw new Error("No response body from API");
-    }
-
-    let fullText = "";
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-        if (trimmed === "data: [DONE]") break;
-
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          const delta = json.choices?.[0]?.delta?.content;
-          if (delta) {
-            fullText += delta;
-            onDelta(delta);
-          }
-        } catch {
-          // ignore chunk parse errors
-        }
-      }
-    }
-
-    const { markdown, questions } = parseFollowupQuestions(fullText);
-    return {
-      fullMarkdown: markdown,
-      followupQuestions: questions,
-      modelType: model,
-    };
-  }
-
-  async streamQuestion(
-    symbol: DeepWikiSymbol,
-    articleMarkdown: string,
-    question: string,
-    onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal,
-  ): Promise<DeepWikiQuestionResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const baseUrl = config.get<string>("apiBaseUrl", "https://api.openai.com/v1");
-    const apiKey = config.get<string>("apiKey", "");
-    const model = config.get<string>("model", "gpt-4o-mini");
-
-    if (!apiKey && !baseUrl.includes("localhost") && !baseUrl.includes("127.0.0.1")) {
-      throw new Error("API Key is required. Set it in DeepWiki settings.");
-    }
-
-    const cleanBase = baseUrl.replace(/\/+$/, "");
-    const endpoint = cleanBase.endsWith("/chat/completions")
-      ? cleanBase
-      : `${cleanBase}/chat/completions`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        messages: [
-          { role: "system", content: buildFollowupSystemPrompt() },
-          { role: "user", content: buildFollowupUserPrompt(symbol, articleMarkdown, question) },
-        ],
-      }),
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`API error (${response.status}): ${errText}`);
-    }
-
-    if (!response.body) {
-      throw new Error("No response body from API");
-    }
-
-    let fullText = "";
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-        if (trimmed === "data: [DONE]") break;
-
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          const delta = json.choices?.[0]?.delta?.content;
-          if (delta) {
-            fullText += delta;
-            onDelta(delta);
-          }
-        } catch {
-          // ignore chunk parse errors
-        }
-      }
-    }
-
-    return {
-      fullMarkdown: fullText,
-      modelType: model,
-    };
+export class OpenAICompatibleProvider extends ChatProvider {
+  protected buildRequest(system: string, user: string): ChatRequest {
+    return openAiRequest(this.settings, system, user);
   }
 }
 
 /**
  * Anthropic Claude Provider
  */
-export class AnthropicProvider implements IAIProvider {
-  async streamArticle(
-    symbol: DeepWikiSymbol,
-    onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal,
-  ): Promise<DeepWikiGenerationResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const apiKey = config.get<string>("apiKey", "");
-    const model = config.get<string>("model", "claude-3-5-sonnet-latest");
-
-    if (!apiKey) {
-      throw new Error("Anthropic API Key is required. Set it in DeepWiki settings.");
-    }
-
-    const endpoint = "https://api.anthropic.com/v1/messages";
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 4096,
-        stream: true,
-        system: buildDeepWikiSystemPrompt(),
-        messages: [{ role: "user", content: buildDeepWikiUserPrompt(symbol) }],
-      }),
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Anthropic error (${response.status}): ${err}`);
-    }
-
-    let fullText = "";
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          if (json.type === "content_block_delta" && json.delta?.text) {
-            fullText += json.delta.text;
-            onDelta(json.delta.text);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    const { markdown, questions } = parseFollowupQuestions(fullText);
-    return {
-      fullMarkdown: markdown,
-      followupQuestions: questions,
-      modelType: model,
-    };
-  }
-
-  async streamQuestion(
-    symbol: DeepWikiSymbol,
-    articleMarkdown: string,
-    question: string,
-    onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal,
-  ): Promise<DeepWikiQuestionResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const apiKey = config.get<string>("apiKey", "");
-    const model = config.get<string>("model", "claude-3-5-sonnet-latest");
-
-    if (!apiKey) {
-      throw new Error("Anthropic API Key is required. Set it in DeepWiki settings.");
-    }
-
-    const endpoint = "https://api.anthropic.com/v1/messages";
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 4096,
-        stream: true,
-        system: buildFollowupSystemPrompt(),
-        messages: [
-          { role: "user", content: buildFollowupUserPrompt(symbol, articleMarkdown, question) },
-        ],
-      }),
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Anthropic error (${response.status}): ${err}`);
-    }
-
-    let fullText = "";
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          if (json.type === "content_block_delta" && json.delta?.text) {
-            fullText += json.delta.text;
-            onDelta(json.delta.text);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    return {
-      fullMarkdown: fullText,
-      modelType: model,
-    };
+export class AnthropicProvider extends ChatProvider {
+  protected buildRequest(system: string, user: string): ChatRequest {
+    return anthropicRequest(this.settings, system, user);
   }
 }
 
 /**
  * Gemini Provider
  */
-export class GeminiProvider implements IAIProvider {
-  async streamArticle(
-    symbol: DeepWikiSymbol,
-    onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal,
-  ): Promise<DeepWikiGenerationResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const apiKey = config.get<string>("apiKey", "");
-    const model = config.get<string>("model", "gemini-2.0-flash");
-
-    if (!apiKey) {
-      throw new Error("Gemini API Key is required. Set it in DeepWiki settings.");
-    }
-
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildDeepWikiSystemPrompt() }] },
-        contents: [{ role: "user", parts: [{ text: buildDeepWikiUserPrompt(symbol) }] }],
-      }),
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Gemini error (${response.status}): ${err}`);
-    }
-
-    let fullText = "";
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (textPart) {
-            fullText += textPart;
-            onDelta(textPart);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    const { markdown, questions } = parseFollowupQuestions(fullText);
-    return {
-      fullMarkdown: markdown,
-      followupQuestions: questions,
-      modelType: model,
-    };
-  }
-
-  async streamQuestion(
-    symbol: DeepWikiSymbol,
-    articleMarkdown: string,
-    question: string,
-    onDelta: (delta: string) => void,
-    abortSignal?: AbortSignal,
-  ): Promise<DeepWikiQuestionResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    const apiKey = config.get<string>("apiKey", "");
-    const model = config.get<string>("model", "gemini-2.0-flash");
-
-    if (!apiKey) {
-      throw new Error("Gemini API Key is required. Set it in DeepWiki settings.");
-    }
-
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildFollowupSystemPrompt() }] },
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: buildFollowupUserPrompt(symbol, articleMarkdown, question) }],
-          },
-        ],
-      }),
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Gemini error (${response.status}): ${err}`);
-    }
-
-    let fullText = "";
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (textPart) {
-            fullText += textPart;
-            onDelta(textPart);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    return {
-      fullMarkdown: fullText,
-      modelType: model,
-    };
+export class GeminiProvider extends ChatProvider {
+  protected buildRequest(system: string, user: string): ChatRequest {
+    return geminiRequest(this.settings, system, user);
   }
 }
 
 /**
- * Devin Local Bridge Provider (Attempts local language server connection if Devin is active)
+ * Devin Local Bridge Provider (local language server, when Devin is running)
  */
 export class DevinBridgeProvider implements IAIProvider {
+  private readonly settings = readSettings();
+
   async streamArticle(
     symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
     abortSignal?: AbortSignal,
   ): Promise<DeepWikiGenerationResult> {
-    const config = vscode.workspace.getConfiguration("deepwiki");
-    let port = config.get<number>("devinBridgePort", 0);
-
-    if (port === 0) {
-      port = 3000;
+    const text = await this.callBridge(symbol, symbol.enclosingCode, abortSignal);
+    if (text !== undefined) {
+      onDelta(text);
+      return { fullMarkdown: text, followupQuestions: [], modelType: "Devin Local Bridge" };
     }
-
-    try {
-      const endpoint = `http://127.0.0.1:${port}/exa.language_server_pb.LanguageServerService/GetDeepWiki`;
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          symbolName: symbol.name,
-          symbolUri: symbol.uri,
-          context: symbol.enclosingCode,
-          requestType: 1, // ARTICLE
-        }),
-        signal: abortSignal,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const text = (data as any)?.rawResponse?.deltaMessage?.text || "";
-        onDelta(text);
-        return {
-          fullMarkdown: text,
-          followupQuestions: [],
-          modelType: "Devin Local Bridge",
-        };
-      }
-    } catch {
-      // Fallback
-    }
-
-    const fallback = new OllamaProvider();
-    return fallback.streamArticle(symbol, onDelta, abortSignal);
+    return new OllamaProvider().streamArticle(symbol, onDelta, abortSignal);
   }
 
   async streamQuestion(
@@ -856,7 +276,67 @@ export class DevinBridgeProvider implements IAIProvider {
     onDelta: (delta: string) => void,
     abortSignal?: AbortSignal,
   ): Promise<DeepWikiQuestionResult> {
-    const fallback = new OllamaProvider();
-    return fallback.streamQuestion(symbol, articleMarkdown, question, onDelta, abortSignal);
+    const context = `${articleMarkdown}\n\nQuestion: ${question}`;
+    const text = await this.callBridge(symbol, context, abortSignal);
+    if (text !== undefined) {
+      onDelta(text);
+      return { fullMarkdown: text, modelType: "Devin Local Bridge" };
+    }
+    return new OllamaProvider().streamQuestion(
+      symbol,
+      articleMarkdown,
+      question,
+      onDelta,
+      abortSignal,
+    );
+  }
+
+  /** Bridge answer, or undefined when the local server is not reachable. */
+  private async callBridge(
+    symbol: DeepWikiSymbol,
+    context: string,
+    abortSignal?: AbortSignal,
+  ): Promise<string | undefined> {
+    const port = this.settings.devinPort || 3000;
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${port}/exa.language_server_pb.LanguageServerService/GetDeepWiki`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // shortcut: the bridge protocol is undocumented here, so a question goes out as an
+          // article request with the question in `context`. Split it out if Devin gets a Q&A type.
+          body: JSON.stringify({
+            symbolName: symbol.name,
+            symbolUri: symbol.uri,
+            context,
+            requestType: 1, // ARTICLE
+          }),
+          signal: abortSignal,
+        },
+      );
+      if (!response.ok) return undefined;
+      const data: any = await response.json();
+      return data?.rawResponse?.deltaMessage?.text || "";
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+export class AIProviderFactory {
+  public static createProvider(): IAIProvider {
+    switch (pickProvider(readSettings())) {
+      case "openai":
+        return new OpenAICompatibleProvider();
+      case "anthropic":
+        return new AnthropicProvider();
+      case "gemini":
+        return new GeminiProvider();
+      case "devin_bridge":
+        return new DevinBridgeProvider();
+      case "ollama":
+        return new OllamaProvider();
+    }
   }
 }
