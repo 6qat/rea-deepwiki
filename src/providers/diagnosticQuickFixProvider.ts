@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { sendPromptToHermes } from "../hermes/hermesHandoff";
 import type { DeepWikiSymbol } from "../types";
 import type { DeepWikiViewProvider } from "../webview/wikiViewProvider";
 
@@ -172,30 +173,12 @@ export function registerDiagnosticCommands(
 
         const promptText = formatDiagnosticsPrompt(document, diagnostics);
 
-        // Copy formatted problem and context to clipboard
-        await vscode.env.clipboard.writeText(promptText);
-
-        const hermesExt = vscode.extensions.getExtension("jefuriiij.hermes-studio");
-        if (hermesExt) {
-          if (!hermesExt.isActive) {
-            await hermesExt.activate();
-          }
-
-          // Open or create new chat in Hermes Studio
-          try {
-            await vscode.commands.executeCommand("hermesStudio.newChat");
-          } catch {
-            await vscode.commands.executeCommand("hermesStudio.openChat");
-          }
-
-          vscode.window.showInformationMessage(
+        await sendPromptToHermes(promptText, {
+          opened:
             "Hermes Studio opened. Problem context copied to clipboard (press Ctrl+V to paste).",
-          );
-        } else {
-          vscode.window.showWarningMessage(
+          notInstalled:
             "Hermes Studio extension is not installed or active. Problem context copied to clipboard.",
-          );
-        }
+        });
       },
     ),
   );
