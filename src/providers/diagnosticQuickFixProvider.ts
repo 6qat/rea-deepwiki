@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
+import { SymbolResolver } from "../context/symbolResolver";
 import { sendPromptToHermes } from "../hermes/hermesHandoff";
-import type { DeepWikiSymbol } from "../types";
 import type { DeepWikiViewProvider } from "../webview/wikiViewProvider";
 
 export class DiagnosticQuickFixProvider implements vscode.CodeActionProvider {
@@ -190,36 +190,7 @@ export function registerDiagnosticCommands(
       async (document: vscode.TextDocument, diagnostic: vscode.Diagnostic) => {
         if (!document || !diagnostic) return;
 
-        const relPath = vscode.workspace.asRelativePath(document.uri);
-        const startLine = diagnostic.range.start.line + 1;
-        const totalLines = document.lineCount;
-        const ctxStartLine = Math.max(0, diagnostic.range.start.line - 8);
-        const ctxEndLine = Math.min(totalLines - 1, diagnostic.range.end.line + 8);
-
-        const sourceTitle = diagnostic.source
-          ? `${diagnostic.source}: ${diagnostic.code ? (typeof diagnostic.code === "object" ? diagnostic.code.value : diagnostic.code) : "Diagnostic"}`
-          : "Linting Problem";
-
-        const enclosingCode = document.getText(
-          new vscode.Range(ctxStartLine, 0, ctxEndLine, document.lineAt(ctxEndLine).text.length),
-        );
-
-        const diagnosticSymbol: DeepWikiSymbol = {
-          name: sourceTitle,
-          kind: "Diagnostic",
-          uri: document.uri.toString(),
-          relativePath: relPath,
-          selectionRange: {
-            startLine,
-            startColumn: diagnostic.range.start.character + 1,
-            endLine: diagnostic.range.end.line + 1,
-            endColumn: diagnostic.range.end.character + 1,
-          },
-          enclosingCode: `// Diagnostic: ${diagnostic.message}\n\n${enclosingCode}`,
-          languageId: document.languageId,
-        };
-
-        await provider.loadSymbol(diagnosticSymbol);
+        await provider.loadSymbol(SymbolResolver.subjectForDiagnostic(document, diagnostic));
       },
     ),
   );

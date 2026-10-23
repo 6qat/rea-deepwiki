@@ -1,141 +1,155 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type { DeepWikiSymbol, SymbolRange } from "../types";
+import type { DeepWikiSymbol } from "../types.ts";
+import {
+  type DefinitionSpan,
+  type OutlineSymbol,
+  pickNamedHit,
+  resolveSubject,
+  type SubjectDocument,
+  type SubjectLookups,
+  subjectFromDiagnostic,
+} from "./articleSubject.ts";
 
+/**
+ * Editor-host adapter for the article-subject module. Callers ask for a
+ * subject from a cursor, a typed name, or a diagnostic.
+ */
 export class SymbolResolver {
   public static async resolveSymbolAt(
     document: vscode.TextDocument,
     position: vscode.Position,
   ): Promise<DeepWikiSymbol | null> {
-    const wordRange = document.getWordRangeAtPosition(position);
-    if (!wordRange) {
-      return null;
-    }
+    return resolveSubject(lookupsFor(document), {
+      uri: document.uri.toString(),
+      line: position.line,
+      character: position.character,
+    });
+  }
 
-    const symbolName = document.getText(wordRange);
-    let targetUri = document.uri;
-    let targetRange = wordRange;
-    let symbolKind = "Symbol";
+  public static async resolveByName(name: string): Promise<DeepWikiSymbol | null> {
+    const hits =
+      (await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+        "vscode.executeWorkspaceSymbolProvider",
+        name,
+      )) ?? [];
+    const hit = pickNamedHit(hits, name);
+    if (!hit) return null;
+    const document = await vscode.workspace.openTextDocument(hit.location.uri);
+    return SymbolResolver.resolveSymbolAt(document, hit.location.range.start);
+  }
 
-    // 1. Try definition provider to jump to the actual definition if cursor is on a usage
-    try {
-      const definitions = await vscode.commands.executeCommand<
-        (vscode.Location | vscode.LocationLink)[]
-      >("vscode.executeDefinitionProvider", document.uri, position);
+  public static subjectForDiagnostic(
+    document: vscode.TextDocument,
+    diagnostic: vscode.Diagnostic,
+  ): DeepWikiSymbol {
+    const code = diagnostic.code;
+    const codeValue =
+      typeof code === "object" && code !== null ? String(code.value) : code?.toString();
+    return subjectFromDiagnostic(toDocument(document), relativePathOf(document.uri.toString()), {
+      message: diagnostic.message,
+      source: diagnostic.source,
+      code: codeValue,
+      startLine: diagnostic.range.start.line,
+      startCharacter: diagnostic.range.start.character,
+      endLine: diagnostic.range.end.line,
+      endCharacter: diagnostic.range.end.character,
+    });
+  }
+}
 
-      if (definitions && definitions.length > 0) {
-        const firstDef = definitions[0];
-        if ("targetUri" in firstDef) {
-          targetUri = firstDef.targetUri;
-          targetRange = firstDef.targetSelectionRange || firstDef.targetRange;
-        } else if ("uri" in firstDef) {
-          targetUri = firstDef.uri;
-          targetRange = firstDef.range;
-        }
+function lookupsFor(origin: vscode.TextDocument): SubjectLookups {
+  return {
+    wordAt: (uri, line, character) => {
+      const document = origin.uri.toString() === uri ? origin : undefined;
+      if (!document) return null;
+      const position = new vscode.Position(line, character);
+      const range = document.getWordRangeAtPosition(position);
+      if (!range) return null;
+      return {
+        text: document.getText(range),
+        startLine: range.start.line,
+        startCharacter: range.start.character,
+        endLine: range.end.line,
+        endCharacter: range.end.character,
+      };
+    },
+    definitions: async (uri, line, character) => {
+      try {
+        const definitions = await vscode.commands.executeCommand<
+          (vscode.Location | vscode.LocationLink)[]
+        >(
+          "vscode.executeDefinitionProvider",
+          vscode.Uri.parse(uri),
+          new vscode.Position(line, character),
+        );
+        return (definitions ?? []).map(toDefinition);
+      } catch {
+        return [];
       }
-    } catch (_err) {
-      // Fall back to current document
-    }
-
-    // 2. Fetch Document Symbols for the target document to identify exact symbol kind and scope
-    let targetDoc: vscode.TextDocument;
-    try {
-      targetDoc = await vscode.workspace.openTextDocument(targetUri);
-    } catch {
-      targetDoc = document;
-      targetUri = document.uri;
-    }
-
-    let enclosingRange: vscode.Range = targetRange;
-    try {
-      const docSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-        "vscode.executeDocumentSymbolProvider",
-        targetUri,
-      );
-
-      if (docSymbols && docSymbols.length > 0) {
-        const match = this.findMatchingSymbol(docSymbols, targetRange.start);
-        if (match) {
-          symbolKind = this.formatSymbolKind(match.kind);
-          enclosingRange = match.range;
-        }
+    },
+    openDocument: async (uri) => {
+      if (origin.uri.toString() === uri) return toDocument(origin);
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(uri));
+      return toDocument(document);
+    },
+    outline: async (uri) => {
+      try {
+        const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+          "vscode.executeDocumentSymbolProvider",
+          vscode.Uri.parse(uri),
+        );
+        return (symbols ?? []).map(toOutline);
+      } catch {
+        return [];
       }
-    } catch (_err) {
-      // Ignored
-    }
+    },
+    relativePath: relativePathOf,
+  };
+}
 
-    // 3. Fallback heuristic for symbol kind if still "Symbol"
-    if (symbolKind === "Symbol") {
-      const lineText = targetDoc.lineAt(targetRange.start.line).text;
-      if (/\b(function|def|fn|func)\b/i.test(lineText)) {
-        symbolKind = "Function";
-      } else if (/\b(class|struct)\b/i.test(lineText)) {
-        symbolKind = "Class";
-      } else if (/\b(interface|trait|type)\b/i.test(lineText)) {
-        symbolKind = "Interface";
-      } else if (/\b(enum)\b/i.test(lineText)) {
-        symbolKind = "Enum";
-      } else if (/\b(const|let|var|val)\b/i.test(lineText)) {
-        symbolKind = "Variable";
-      }
-    }
+function toDocument(document: vscode.TextDocument): SubjectDocument {
+  return {
+    uri: document.uri.toString(),
+    languageId: document.languageId,
+    lineCount: document.lineCount,
+    lineAt: (line) => document.lineAt(line).text,
+  };
+}
 
-    // 4. Extract enclosing code context (bounded to max 120 lines around symbol)
-    const startLine = Math.max(0, enclosingRange.start.line - 10);
-    const endLine = Math.min(
-      targetDoc.lineCount - 1,
-      Math.max(enclosingRange.end.line + 10, startLine + 80),
-    );
-
-    const contextLines: string[] = [];
-    for (let i = startLine; i <= endLine; i++) {
-      const prefix = i === targetRange.start.line ? "> " : "  ";
-      contextLines.push(`${prefix}${i + 1}: ${targetDoc.lineAt(i).text}`);
-    }
-
-    const enclosingCode = contextLines.join("\n");
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(targetUri);
-    const relativePath = workspaceFolder
-      ? path.relative(workspaceFolder.uri.fsPath, targetUri.fsPath)
-      : path.basename(targetUri.fsPath);
-
-    const selectionRange: SymbolRange = {
-      startLine: targetRange.start.line + 1,
-      startColumn: targetRange.start.character + 1,
-      endLine: targetRange.end.line + 1,
-      endColumn: targetRange.end.character + 1,
-    };
-
+function toDefinition(def: vscode.Location | vscode.LocationLink): DefinitionSpan {
+  if ("targetUri" in def) {
+    const range = def.targetSelectionRange || def.targetRange;
     return {
-      name: symbolName,
-      kind: symbolKind,
-      uri: targetUri.toString(),
-      relativePath,
-      selectionRange,
-      enclosingCode,
-      languageId: targetDoc.languageId,
+      uri: def.targetUri.toString(),
+      startLine: range.start.line,
+      startCharacter: range.start.character,
+      endLine: range.end.line,
+      endCharacter: range.end.character,
     };
   }
+  return {
+    uri: def.uri.toString(),
+    startLine: def.range.start.line,
+    startCharacter: def.range.start.character,
+    endLine: def.range.end.line,
+    endCharacter: def.range.end.character,
+  };
+}
 
-  private static findMatchingSymbol(
-    symbols: vscode.DocumentSymbol[],
-    pos: vscode.Position,
-  ): vscode.DocumentSymbol | null {
-    for (const sym of symbols) {
-      if (sym.range.contains(pos)) {
-        if (sym.children && sym.children.length > 0) {
-          const childMatch = this.findMatchingSymbol(sym.children, pos);
-          if (childMatch) {
-            return childMatch;
-          }
-        }
-        return sym;
-      }
-    }
-    return null;
-  }
+function toOutline(symbol: vscode.DocumentSymbol): OutlineSymbol {
+  return {
+    kind: vscode.SymbolKind[symbol.kind] ?? "Symbol",
+    startLine: symbol.range.start.line,
+    startCharacter: symbol.range.start.character,
+    endLine: symbol.range.end.line,
+    endCharacter: symbol.range.end.character,
+    children: (symbol.children ?? []).map(toOutline),
+  };
+}
 
-  private static formatSymbolKind(kind: vscode.SymbolKind): string {
-    return vscode.SymbolKind[kind] ?? "Symbol";
-  }
+function relativePathOf(uri: string): string {
+  const parsed = vscode.Uri.parse(uri);
+  const folder = vscode.workspace.getWorkspaceFolder(parsed);
+  return folder ? path.relative(folder.uri.fsPath, parsed.fsPath) : path.basename(parsed.fsPath);
 }

@@ -47,22 +47,12 @@ export function activate(context: vscode.ExtensionContext) {
       const name = input?.trim();
       if (!name) return;
 
-      const hits =
-        (await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
-          "vscode.executeWorkspaceSymbolProvider",
-          name,
-        )) ?? [];
-      const hit = hits.find((h) => h.name === name) ?? hits[0];
-      if (!hit) {
+      const symbol = await SymbolResolver.resolveByName(name);
+      if (!symbol) {
         vscode.window.showWarningMessage(`No symbol named "${name}" found in the workspace.`);
         return;
       }
-
-      const document = await vscode.workspace.openTextDocument(hit.location.uri);
-      const symbol = await SymbolResolver.resolveSymbolAt(document, hit.location.range.start);
-      if (symbol) {
-        await provider.loadSymbol(symbol);
-      }
+      await provider.loadSymbol(symbol);
     }),
   );
 

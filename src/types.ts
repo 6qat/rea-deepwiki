@@ -42,8 +42,7 @@ export type WebviewToExtensionMessage =
   | { type: "historyBack" }
   | { type: "historyForward" }
   | { type: "copyMarkdown"; markdown: string }
-  | { type: "refresh" }
-  | { type: "searchSymbol"; query: string };
+  | { type: "refresh" };
 
 export type ExtensionToWebviewMessage =
   | { type: "setSymbol"; symbol: DeepWikiSymbol }

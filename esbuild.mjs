@@ -17,12 +17,23 @@ async function main() {
     logLevel: "info",
   });
 
+  const webview = await esbuild.context({
+    entryPoints: ["src/webview/webviewMain.ts"],
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    minify: production,
+    sourcemap: false,
+    outfile: "media/deepwikiWebview.js",
+    logLevel: "info",
+  });
+
   if (watch) {
-    await ctx.watch();
+    await Promise.all([ctx.watch(), webview.watch()]);
     console.log("Watching for changes...");
   } else {
-    await ctx.rebuild();
-    await ctx.dispose();
+    await Promise.all([ctx.rebuild(), webview.rebuild()]);
+    await Promise.all([ctx.dispose(), webview.dispose()]);
   }
 
   // Bundle highlight.js for webview
