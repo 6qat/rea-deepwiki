@@ -2,7 +2,7 @@
   "name": "deepwiki",
   "displayName": "DeepWiki",
   "description": "Interactive Code Encyclopedia & Symbol Documentation for VS Code",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "morluto",
   "publisherDisplayName": "Ceschiatti (6qat)",
   "author": "Ceschiatti (6qat)",
@@ -137,6 +137,19 @@
           "type": "number",
           "default": 0,
           "description": "Local Devin language server port (when using Devin Bridge mode; 0 for auto-detect)."
+        },
+        "deepwiki.outputLanguage": {
+          "type": "string",
+          "enum": [
+            "en",
+            "pt-BR"
+          ],
+          "enumItemLabels": [
+            "English",
+            "Brazilian Portuguese"
+          ],
+          "default": "en",
+          "description": "Output language for generated DeepWiki articles, follow-up questions, and interface text (English or Brazilian Portuguese)."
         },
         "deepwiki.followupAction": {
           "type": "string",

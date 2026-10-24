@@ -5,6 +5,7 @@ import { ArticleSession } from "../session/articleSession";
 import type {
   DeepWikiSymbol,
   ExtensionToWebviewMessage,
+  OutputLanguage,
   WebviewToExtensionMessage,
 } from "../types";
 import { getDeepWikiWebviewContent } from "./deepwikiHtml";
@@ -13,6 +14,11 @@ const wikiHermesMessages = {
   opened: "Opened new chat in Hermes Studio. Question context copied to clipboard.",
   notInstalled: "Hermes Studio extension is not installed or active. Context copied to clipboard.",
 };
+
+function getOutputLanguage(): OutputLanguage {
+  const lang = vscode.workspace.getConfiguration("deepwiki").get<string>("outputLanguage", "en");
+  return lang === "pt-BR" ? "pt-BR" : "en";
+}
 
 export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "deepwiki.wikiView";
@@ -52,7 +58,11 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, "media")],
     };
 
-    webviewView.webview.html = getDeepWikiWebviewContent(webviewView.webview, this._extensionUri);
+    webviewView.webview.html = getDeepWikiWebviewContent(
+      webviewView.webview,
+      this._extensionUri,
+      getOutputLanguage(),
+    );
 
     this.setupMessageListener(webviewView.webview);
 
@@ -78,7 +88,11 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
 
     this._panel.iconPath = vscode.Uri.joinPath(this._extensionUri, "media", "deepwiki.svg");
 
-    this._panel.webview.html = getDeepWikiWebviewContent(this._panel.webview, this._extensionUri);
+    this._panel.webview.html = getDeepWikiWebviewContent(
+      this._panel.webview,
+      this._extensionUri,
+      getOutputLanguage(),
+    );
 
     this.setupMessageListener(this._panel.webview);
 
@@ -106,7 +120,11 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
           break;
         case "copyMarkdown":
           await vscode.env.clipboard.writeText(msg.markdown);
-          vscode.window.showInformationMessage("DeepWiki markdown copied to clipboard.");
+          vscode.window.showInformationMessage(
+            getOutputLanguage() === "pt-BR"
+              ? "Markdown do DeepWiki copiado para a área de transferência."
+              : "DeepWiki markdown copied to clipboard.",
+          );
           break;
         case "refresh":
           await this.refreshCurrentArticle();
@@ -120,6 +138,14 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
           break;
       }
     });
+  }
+
+  public async setOutputLanguage(language: string): Promise<void> {
+    const lang: OutputLanguage = language === "pt-BR" ? "pt-BR" : "en";
+    this.postToAllWebviews({ type: "setLanguage", language: lang });
+    if (this._session.currentArticle) {
+      await this.refreshCurrentArticle();
+    }
   }
 
   public async loadSymbol(symbol: DeepWikiSymbol, pushHistory = true): Promise<void> {

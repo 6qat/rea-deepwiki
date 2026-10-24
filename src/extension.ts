@@ -18,6 +18,18 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  // Configuration change listener (Output Language)
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (event.affectsConfiguration("deepwiki.outputLanguage")) {
+        const lang = vscode.workspace
+          .getConfiguration("deepwiki")
+          .get<string>("outputLanguage", "en");
+        await provider.setOutputLanguage(lang);
+      }
+    }),
+  );
+
   // Command: Open Symbol in DeepWiki
   context.subscriptions.push(
     vscode.commands.registerCommand("deepwiki.openSymbol", async (arg?: any) => {

@@ -33,6 +33,8 @@ export interface DeepWikiArticle {
   qas?: DeepWikiQA[];
 }
 
+export type OutputLanguage = "en" | "pt-BR";
+
 export type WebviewToExtensionMessage =
   | { type: "openFileLocation"; uri: string; line: number; column?: number }
   | { type: "openFileCitation"; path: string; line: number }
@@ -45,6 +47,7 @@ export type WebviewToExtensionMessage =
   | { type: "refresh" };
 
 export type ExtensionToWebviewMessage =
+  | { type: "setLanguage"; language: OutputLanguage }
   | { type: "setSymbol"; symbol: DeepWikiSymbol }
   | { type: "streamDelta"; delta: string }
   | {

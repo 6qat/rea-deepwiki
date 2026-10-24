@@ -1,5 +1,5 @@
 import type { WebviewToExtensionMessage } from "../types.ts";
-import { applyHostMessage, initialPanelView, type PanelQa } from "./panelView.ts";
+import { applyHostMessage, getPanelStrings, initialPanelView, type PanelQa } from "./panelView.ts";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: WebviewToExtensionMessage): void;
@@ -82,6 +82,7 @@ declare const hljs: {
   });
 
   function paint(): void {
+    const strings = getPanelStrings(view.language);
     const nextSymbolKey = view.symbol ? `${view.symbol.uri}\n${view.symbol.name}` : "";
     if (nextSymbolKey !== symbolKey) {
       symbolKey = nextSymbolKey;
@@ -92,6 +93,28 @@ declare const hljs: {
     articleContainer.style.display = view.showArticle ? "flex" : "none";
     skeletonLoader.style.display = view.showSkeleton ? "block" : "none";
     articleContent.style.display = view.showBody ? "block" : "none";
+
+    // Update static strings on language change
+    const welcomeTitle = document.getElementById("welcome-title");
+    if (welcomeTitle) welcomeTitle.textContent = strings.welcomeTitle;
+    const welcomeSubtitle = document.getElementById("welcome-subtitle");
+    if (welcomeSubtitle) welcomeSubtitle.textContent = strings.welcomeSubtitle;
+    const welcomeShortcutText = document.getElementById("welcome-shortcut-text");
+    if (welcomeShortcutText) welcomeShortcutText.textContent = strings.welcomeShortcut;
+    const welcomeHint = document.getElementById("welcome-hint");
+    if (welcomeHint) welcomeHint.innerHTML = strings.welcomeRightClick;
+    const followupHeading = document.getElementById("followup-heading");
+    if (followupHeading) followupHeading.textContent = strings.exploreFurther;
+    const qaHeading = document.getElementById("qa-heading");
+    if (qaHeading) qaHeading.textContent = strings.followupAnswers;
+
+    if (customQuestionInput) customQuestionInput.placeholder = strings.askQuestionPlaceholder;
+    if (customQuestionBtn) customQuestionBtn.title = strings.sendQuestion;
+
+    if (backBtn) backBtn.title = strings.back;
+    if (forwardBtn) forwardBtn.title = strings.forward;
+    if (copyBtn) copyBtn.title = strings.copyMarkdown;
+    if (refreshBtn) refreshBtn.title = strings.refresh;
 
     symbolNameEl.textContent = view.header.name;
     symbolKindEl.textContent = view.header.kind;
@@ -115,14 +138,16 @@ declare const hljs: {
   }
 
   function resetFollowupBubbles(): void {
+    const strings = getPanelStrings(view.language);
     for (const bubble of followupList.querySelectorAll(".deepwiki-question-bubble")) {
       bubble.classList.remove("loading");
       const span = bubble.querySelector("span:last-child");
-      if (span?.textContent === "Answering...") span.innerHTML = "Ask inline &darr;";
+      if (span?.textContent === strings.answering) span.innerHTML = strings.askInline;
     }
   }
 
   function paintArticle(): void {
+    const strings = getPanelStrings(view.language);
     if (!view.showBody) {
       articleContent.innerHTML = "";
       renderedArticle = "";
@@ -131,10 +156,10 @@ declare const hljs: {
     if (view.error) {
       articleContent.innerHTML = `
         <div style="padding: 16px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; margin: 16px 0;">
-          <strong style="display: block; margin-bottom: 6px;">DeepWiki Generation Error</strong>
+          <strong style="display: block; margin-bottom: 6px;">${escapeHtml(strings.generationError)}</strong>
           <span>${escapeHtml(view.error)}</span>
           <div style="margin-top: 12px;">
-            <button id="error-retry-btn" style="padding: 4px 10px; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button>
+            <button id="error-retry-btn" style="padding: 4px 10px; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer;">${escapeHtml(strings.retry)}</button>
           </div>
         </div>`;
       document.getElementById("error-retry-btn")?.addEventListener("click", () => {
@@ -161,6 +186,7 @@ declare const hljs: {
   }
 
   function paintFollowups(): void {
+    const strings = getPanelStrings(view.language);
     const show = view.followups.length > 0 && !view.streaming && !view.error;
     followupContainer.style.display = show ? "block" : "none";
     if (!show) {
@@ -170,22 +196,22 @@ declare const hljs: {
       }
       return;
     }
-    const key = view.followups.join("\n");
+    const key = `${view.language}\n${view.followups.join("\n")}`;
     if (key === followupKey) return;
     followupKey = key;
     followupList.innerHTML = "";
     for (const question of view.followups) {
       const bubble = document.createElement("button");
       bubble.className = "deepwiki-question-bubble";
-      bubble.title = "Ask question inline";
+      bubble.title = strings.askInline;
       bubble.innerHTML = `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" style="margin-right: 8px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
         <span style="flex: 1;">${escapeHtml(question)}</span>
-        <span style="font-size: 11px; opacity: 0.7; margin-left: 8px; flex-shrink: 0; color: #38bdf8; display: flex; align-items: center; gap: 3px;">Ask inline &darr;</span>`;
+        <span style="font-size: 11px; opacity: 0.7; margin-left: 8px; flex-shrink: 0; color: #38bdf8; display: flex; align-items: center; gap: 3px;">${escapeHtml(strings.askInline)}</span>`;
       bubble.addEventListener("click", () => {
         bubble.classList.add("loading");
         const statusSpan = bubble.querySelector("span:last-child");
-        if (statusSpan) statusSpan.textContent = "Answering...";
+        if (statusSpan) statusSpan.textContent = strings.answering;
         vscode.postMessage({ type: "followupClick", question });
       });
       followupList.appendChild(bubble);
@@ -213,6 +239,7 @@ declare const hljs: {
   }
 
   function qaCardHtml(qa: PanelQa): string {
+    const strings = getPanelStrings(view.language);
     return `
       <div class="deepwiki-qa-card-header">
         <div class="deepwiki-qa-card-title">
@@ -221,20 +248,20 @@ declare const hljs: {
         </div>
         <div class="deepwiki-qa-card-actions">
           <span class="deepwiki-qa-model-badge">DeepWiki</span>
-          <button class="deepwiki-qa-action-btn btn-copy-qa" title="Copy Answer">
+          <button class="deepwiki-qa-action-btn btn-copy-qa" title="${escapeHtml(strings.copy)}">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-            <span>Copy</span>
+            <span>${escapeHtml(strings.copy)}</span>
           </button>
-          <button class="deepwiki-qa-action-btn btn-hermes-qa" title="Continue in Hermes Studio">
+          <button class="deepwiki-qa-action-btn btn-hermes-qa" title="${escapeHtml(strings.continueInHermes)}">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-            <span>Hermes ↗</span>
+            <span>${escapeHtml(strings.hermesLabel)}</span>
           </button>
         </div>
       </div>
       <div class="deepwiki-qa-card-body">
         <div class="deepwiki-qa-loading-indicator">
           <span class="deepwiki-spinner"></span>
-          <span>Generating answer...</span>
+          <span>${escapeHtml(strings.generatingAnswer)}</span>
         </div>
         <div class="deepwiki-qa-content" style="display: none;"></div>
         <div class="deepwiki-qa-error" style="display: none;"></div>
@@ -243,13 +270,14 @@ declare const hljs: {
 
   function bindQaCard(card: HTMLElement, qaId: string): void {
     card.querySelector(".btn-copy-qa")?.addEventListener("click", () => {
+      const strings = getPanelStrings(view.language);
       const qa = view.qas.find((item) => item.id === qaId);
       if (!qa?.markdown) return;
       navigator.clipboard.writeText(qa.markdown);
       const span = card.querySelector(".btn-copy-qa span");
-      if (span) span.textContent = "Copied!";
+      if (span) span.textContent = strings.copied;
       setTimeout(() => {
-        if (span) span.textContent = "Copy";
+        if (span) span.textContent = strings.copy;
       }, 1500);
     });
     card.querySelector(".btn-hermes-qa")?.addEventListener("click", () => {
@@ -263,6 +291,7 @@ declare const hljs: {
   }
 
   function updateQaCard(card: HTMLElement, qa: PanelQa): void {
+    const strings = getPanelStrings(view.language);
     card.className = qa.status === "streaming" ? "deepwiki-qa-card active" : "deepwiki-qa-card";
     const content = card.querySelector(".deepwiki-qa-content") as HTMLElement | null;
     const loading = card.querySelector(".deepwiki-qa-loading-indicator") as HTMLElement | null;
@@ -277,7 +306,7 @@ declare const hljs: {
       loading.style.display = "none";
       content.style.display = "none";
       errorEl.style.display = "block";
-      errorEl.innerHTML = `<div style="padding: 10px 12px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; font-size: 12px;"><strong>Error:</strong> ${escapeHtml(qa.error ?? "")}</div>`;
+      errorEl.innerHTML = `<div style="padding: 10px 12px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; font-size: 12px;"><strong>${escapeHtml(strings.errorPrefix)}</strong> ${escapeHtml(qa.error ?? "")}</div>`;
       return;
     }
 

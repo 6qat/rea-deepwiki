@@ -15,3 +15,7 @@ _Avoid_: wiki page, document
 **Follow-up**:
 A question about the article on screen.
 _Avoid_: chat message, prompt
+
+**Output language**:
+The human language in which DeepWiki presents its interface, articles, and follow-ups.
+_Avoid_: locale, target language, translation language

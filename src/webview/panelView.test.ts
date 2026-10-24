@@ -101,3 +101,23 @@ test("a delta after the article completes does not change the body", () => {
   view = applyHostMessage(view, { type: "streamDelta", delta: "late" });
   assert.equal(view.markdown, "Done");
 });
+
+test("setLanguage updates the panel language and localized headers", () => {
+  let view = initialPanelView();
+  assert.equal(view.language, "en");
+  assert.equal(view.header.kind, "Encyclopedia");
+  assert.equal(view.header.location, "No symbol selected");
+
+  view = applyHostMessage(view, { type: "setLanguage", language: "pt-BR" });
+  assert.equal(view.language, "pt-BR");
+  assert.equal(view.header.kind, "Enciclopédia");
+  assert.equal(view.header.location, "Nenhum símbolo selecionado");
+
+  view = applyHostMessage(view, { type: "setSymbol", symbol });
+  assert.equal(view.header.name, "Foo");
+  assert.equal(view.header.kind, "Função");
+
+  view = applyHostMessage(view, { type: "setLanguage", language: "en" });
+  assert.equal(view.language, "en");
+  assert.equal(view.header.kind, "Function");
+});

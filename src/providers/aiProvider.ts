@@ -12,6 +12,7 @@ function readSettings(): Settings {
     baseUrl: config.get<string>("apiBaseUrl", ""),
     model: config.get<string>("model", ""),
     devinPort: config.get<number>("devinBridgePort", 0),
+    outputLanguage: config.get<string>("outputLanguage", "en"),
   };
 }
 

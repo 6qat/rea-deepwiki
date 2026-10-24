@@ -28,7 +28,9 @@ An interactive, AI-powered codebase encyclopedia for standard VS Code, extracted
 
 In VS Code Settings (`Ctrl+,` or `Cmd+,`), search for **DeepWiki**:
 
-- `deepwiki.provider`: Select your preferred AI backend (`ollama`, `openai`, `anthropic`, `gemini`, `devin_bridge`).
+- `deepwiki.outputLanguage`: Output language for articles, follow-up questions, and interface text (`en` for English, `pt-BR` for Brazilian Portuguese).
+- `deepwiki.provider`: Select your preferred AI backend (`auto`, `ollama`, `openai`, `anthropic`, `gemini`, `devin_bridge`).
 - `deepwiki.model`: Model name (default: `llama3.2`).
 - `deepwiki.apiKey`: API Key (required for cloud providers).
 - `deepwiki.apiBaseUrl`: Custom API Base URL (defaults to `http://localhost:11434` for Ollama).
+- `deepwiki.followupAction`: Action when clicking a follow-up chip (`inline`, `hermes`, `deepwiki`, `clipboard`).

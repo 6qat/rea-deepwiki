@@ -89,11 +89,12 @@ class Generator implements IAIProvider {
       }
     }
 
+    const lang = this.settings.outputLanguage ?? "en";
     const chatKind = kind === "devin_bridge" ? "ollama" : kind;
     const { text, model } = await this.streamText(
       chatKind,
-      articleSystemPrompt(),
-      articleUserPrompt(symbol),
+      articleSystemPrompt(lang),
+      articleUserPrompt(symbol, lang),
       onDelta,
       abortSignal,
     );
@@ -118,11 +119,12 @@ class Generator implements IAIProvider {
       }
     }
 
+    const lang = this.settings.outputLanguage ?? "en";
     const chatKind = kind === "devin_bridge" ? "ollama" : kind;
     const { text, model } = await this.streamText(
       chatKind,
-      followupSystemPrompt(),
-      followupUserPrompt(symbol, articleMarkdown, question),
+      followupSystemPrompt(lang),
+      followupUserPrompt(symbol, articleMarkdown, question, lang),
       onDelta,
       abortSignal,
     );
@@ -161,6 +163,11 @@ class Generator implements IAIProvider {
     abortSignal?: AbortSignal,
   ): Promise<string | undefined> {
     const port = this.settings.devinPort || 3000;
+    const langNote =
+      this.settings.outputLanguage === "pt-BR"
+        ? "\n\nObservação: Por favor, responda em Português Brasileiro (pt-BR)."
+        : "";
+    const bridgeContext = `${context}${langNote}`;
     try {
       const response = await this.transport(
         `http://127.0.0.1:${port}/exa.language_server_pb.LanguageServerService/GetDeepWiki`,
@@ -170,7 +177,7 @@ class Generator implements IAIProvider {
           body: JSON.stringify({
             symbolName: symbol.name,
             symbolUri: symbol.uri,
-            context,
+            context: bridgeContext,
             requestType: 1,
           }),
           signal: abortSignal,
@@ -225,7 +232,26 @@ async function runRequest(
   return streamLines(response, onDelta, req.parseLine);
 }
 
-function articleSystemPrompt(): string {
+function articleSystemPrompt(language = "en"): string {
+  if (language === "pt-BR") {
+    return `Você é o DeepWiki, a enciclopédia interativa de código integrada ao espaço de trabalho do desenvolvedor.
+Seu propósito é gerar um artigo de documentação arquitetural claro, abrangente e com autoridade técnica para qualquer símbolo de código (função, classe, módulo, interface, variável) no projeto do usuário.
+
+Diretrizes:
+1. Forneça uma explicação técnica e precisa das responsabilidades do símbolo, invariantes, entradas e saídas. Responda em Português Brasileiro (pt-BR), mantendo identificadores de código, tipos e nomes de arquivos na forma original.
+2. Estruture o artigo de forma limpa com cabeçalhos Markdown:
+   - ## Visão Geral e Propósito
+   - ## Assinatura e Contrato
+   - ## Implementação e Fluxo de Dados
+   - ## Uso e Casos de Borda
+3. Ao referenciar linhas de código do contexto fornecido, cite-as com precisão com referências de arquivo e linha.
+4. No final da sua resposta, você DEVE fornecer exatamente 3 perguntas concisas de acompanhamento em Português Brasileiro para ajudar o desenvolvedor a explorar com mais profundidade. Separe-as usando este delimitador exato:
+<!-- DEEPWIKI_FOLLOWUPS -->
+- Pergunta 1?
+- Pergunta 2?
+- Pergunta 3?`;
+  }
+
   return `You are DeepWiki, the interactive code encyclopedia built into the developer's workspace.
 Your purpose is to generate an authoritative, clear, and comprehensive architectural documentation article for any code symbol (function, class, module, interface, variable) in the user's project.
 
@@ -244,7 +270,23 @@ Guidelines:
 - Question 3?`;
 }
 
-function articleUserPrompt(symbol: DeepWikiSymbol): string {
+function articleUserPrompt(symbol: DeepWikiSymbol, language = "en"): string {
+  if (language === "pt-BR") {
+    return `Por favor, documente o seguinte símbolo:
+
+Nome do Símbolo: ${symbol.name}
+Tipo do Símbolo: ${symbol.kind}
+Arquivo: ${symbol.relativePath} (linhas ${symbol.selectionRange.startLine}:${symbol.selectionRange.startColumn} - ${symbol.selectionRange.endLine}:${symbol.selectionRange.endColumn})
+Linguagem: ${symbol.languageId}
+
+Contexto de Código Envolvente:
+\`\`\`${symbol.languageId}
+${symbol.enclosingCode}
+\`\`\`
+
+Gere um artigo completo do DeepWiki para ${symbol.name} em Português Brasileiro.`;
+  }
+
   return `Please document the following symbol:
 
 Symbol Name: ${symbol.name}
@@ -260,7 +302,17 @@ ${symbol.enclosingCode}
 Generate a complete DeepWiki article for ${symbol.name}.`;
 }
 
-function followupSystemPrompt(): string {
+function followupSystemPrompt(language = "en"): string {
+  if (language === "pt-BR") {
+    return `Você é o DeepWiki, o assistente interativo da enciclopédia do espaço de trabalho.
+Você está respondendo a uma pergunta de acompanhamento do desenvolvedor sobre um símbolo de código específico e sua arquitetura.
+
+Diretrizes:
+1. Forneça uma resposta direta, tecnicamente precisa e focada com base na implementação e contexto do símbolo. Responda em Português Brasileiro (pt-BR), mantendo símbolos de código e identificadores na forma original.
+2. Se relevante, inclua trechos de código concisos com o devido realce de sintaxe.
+3. Seja claro, sucinto e informativo.`;
+  }
+
   return `You are DeepWiki, the interactive workspace encyclopedia assistant.
 You are answering a developer's follow-up question regarding a specific code symbol and its architecture.
 
@@ -274,8 +326,27 @@ function followupUserPrompt(
   symbol: DeepWikiSymbol,
   articleMarkdown: string,
   question: string,
+  language = "en",
 ): string {
   const summarySnippet = articleMarkdown ? articleMarkdown.slice(0, 1500) : "";
+  if (language === "pt-BR") {
+    return `Contexto - Símbolo de Código:
+Nome: ${symbol.name} (${symbol.kind})
+Arquivo: ${symbol.relativePath}
+Linguagem: ${symbol.languageId}
+
+Código Fonte:
+\`\`\`${symbol.languageId}
+${symbol.enclosingCode}
+\`\`\`
+
+${summarySnippet ? `Resumo do Artigo DeepWiki:\n${summarySnippet}\n` : ""}
+Pergunta de Acompanhamento:
+${question}
+
+Por favor, responda à pergunta de forma clara e direta em Português Brasileiro.`;
+  }
+
   return `Context - Code Symbol:
 Name: ${symbol.name} (${symbol.kind})
 File: ${symbol.relativePath}

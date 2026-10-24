@@ -14,6 +14,7 @@ export interface Settings {
   baseUrl: string;
   model: string;
   devinPort: number;
+  outputLanguage?: string;
 }
 
 const OLLAMA_URL = "http://localhost:11434";

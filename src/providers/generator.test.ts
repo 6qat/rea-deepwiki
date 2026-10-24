@@ -154,3 +154,22 @@ test("an aborted stream rejects", async () => {
     (err: unknown) => err instanceof Error && err.name === "AbortError",
   );
 });
+
+test("pt-BR outputLanguage configures Portuguese system and user prompts", async () => {
+  const bodies: { messages: { content: string }[] }[] = [];
+  const transport: Transport = async (_url, init) => {
+    bodies.push(JSON.parse(init.body) as { messages: { content: string }[] });
+    return openAiBody("Artigo em Português");
+  };
+  const generator = createGenerator(settings({ outputLanguage: "pt-BR" }), transport);
+
+  const article = await generator.streamArticle(symbol, () => {});
+  assert.equal(article.fullMarkdown, "Artigo em Português");
+  assert.match(bodies[0]?.messages[0]?.content ?? "", /## Visão Geral e Propósito/);
+  assert.match(bodies[0]?.messages[0]?.content ?? "", /Português Brasileiro/);
+  assert.match(bodies[0]?.messages[1]?.content ?? "", /Nome do Símbolo: Foo/);
+
+  await generator.streamQuestion(symbol, "corpo do artigo", "Por que?", () => {});
+  assert.match(bodies[1]?.messages[0]?.content ?? "", /Português Brasileiro/);
+  assert.match(bodies[1]?.messages[1]?.content ?? "", /Pergunta de Acompanhamento:\nPor que\?/);
+});
