@@ -2,7 +2,7 @@
 
 An interactive, AI-powered codebase encyclopedia for standard VS Code, extracted and adapted from Devin Desktop / Windsurf.
 
-![DeepWiki](media/deepwiki.png)
+![DeepWiki](media/deepwiki-icon-128.png)
 
 ## Features
 
