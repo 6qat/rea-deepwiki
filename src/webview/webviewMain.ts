@@ -35,8 +35,7 @@ declare const hljs: {
   const customQuestionBtn = document.getElementById("btn-custom-question-submit");
   const qaContainer = required("qa-container");
   const qaList = required("qa-list");
-  const backBtn = document.getElementById("btn-back") as HTMLButtonElement | null;
-  const forwardBtn = document.getElementById("btn-forward") as HTMLButtonElement | null;
+  const historySelect = document.getElementById("history-select") as HTMLSelectElement | null;
   const refreshBtn = document.getElementById("btn-refresh");
   const copyBtn = document.getElementById("btn-copy");
 
@@ -44,6 +43,7 @@ declare const hljs: {
   let renderedArticle = "";
   let followupKey = "";
   let symbolKey = "";
+  let historyKey = "";
   let renderQueued = false;
 
   if (typeof marked !== "undefined") {
@@ -81,6 +81,31 @@ declare const hljs: {
     paint();
   });
 
+  function paintHistory(): void {
+    if (!historySelect) return;
+    const strings = getPanelStrings(view.language);
+    const { entries, index } = view.history;
+    historySelect.hidden = entries.length === 0;
+    historySelect.setAttribute("aria-label", strings.history);
+    historySelect.title = strings.history;
+
+    const nextKey = entries.map((entry) => `${entry.name}\0${entry.model}`).join("\n");
+    if (nextKey !== historyKey) {
+      historyKey = nextKey;
+      historySelect.replaceChildren(
+        ...entries.map((entry, entryIndex) => {
+          const option = document.createElement("option");
+          option.value = String(entryIndex);
+          option.textContent = entry.model ? `${entry.name} · ${entry.model}` : entry.name;
+          return option;
+        }),
+      );
+    }
+
+    const nextValue = index >= 0 ? String(index) : "";
+    if (historySelect.value !== nextValue) historySelect.value = nextValue;
+  }
+
   function paint(): void {
     const strings = getPanelStrings(view.language);
     const nextSymbolKey = view.symbol ? `${view.symbol.uri}\n${view.symbol.name}` : "";
@@ -111,8 +136,7 @@ declare const hljs: {
     if (customQuestionInput) customQuestionInput.placeholder = strings.askQuestionPlaceholder;
     if (customQuestionBtn) customQuestionBtn.title = strings.sendQuestion;
 
-    if (backBtn) backBtn.title = strings.back;
-    if (forwardBtn) forwardBtn.title = strings.forward;
+    paintHistory();
     if (copyBtn) copyBtn.title = strings.copyMarkdown;
     if (refreshBtn) refreshBtn.title = strings.refresh;
 
@@ -127,9 +151,6 @@ declare const hljs: {
     } else {
       modelBadgeEl.style.display = "none";
     }
-
-    if (backBtn) backBtn.disabled = !view.history.hasBack;
-    if (forwardBtn) forwardBtn.disabled = !view.history.hasForward;
 
     paintArticle();
     paintFollowups();
@@ -455,8 +476,11 @@ declare const hljs: {
     submitCustomQuestion();
   });
 
-  backBtn?.addEventListener("click", () => vscode.postMessage({ type: "historyBack" }));
-  forwardBtn?.addEventListener("click", () => vscode.postMessage({ type: "historyForward" }));
+  historySelect?.addEventListener("change", () => {
+    const index = Number(historySelect.value);
+    if (!Number.isInteger(index) || index === view.history.index) return;
+    vscode.postMessage({ type: "historySelect", index });
+  });
   refreshBtn?.addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
   copyBtn?.addEventListener("click", () => {
     vscode.postMessage({ type: "copyMarkdown", markdown: view.markdown });

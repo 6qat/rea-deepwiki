@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { sendPromptToHermes } from "../hermes/hermesHandoff";
-import { AIProviderFactory } from "../providers/aiProvider";
+import { AIProviderFactory, currentArticleModel } from "../providers/aiProvider";
 import { ArticleSession } from "../session/articleSession";
 import type {
   DeepWikiSymbol,
@@ -29,7 +29,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._session = new ArticleSession({
-      createProvider: () => AIProviderFactory.createProvider(),
+      createProvider: (model) => AIProviderFactory.createProvider(model),
       emit: (message) => this.postToAllWebviews(message),
       getFollowupAction: () =>
         vscode.workspace.getConfiguration("deepwiki").get<string>("followupAction", "inline"),
@@ -43,6 +43,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       info: (message) => {
         vscode.window.showInformationMessage(message);
       },
+      getModel: () => currentArticleModel(),
     });
   }
 
@@ -112,11 +113,8 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
         case "openFileCitation":
           await this.handleOpenFileCitation(msg.path, msg.line);
           break;
-        case "historyBack":
-          this._session.navigateBack();
-          break;
-        case "historyForward":
-          this._session.navigateForward();
+        case "historySelect":
+          this._session.navigateTo(msg.index);
           break;
         case "copyMarkdown":
           await vscode.env.clipboard.writeText(msg.markdown);

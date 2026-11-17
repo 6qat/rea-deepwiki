@@ -7,6 +7,7 @@ import {
   ollamaRequest,
   openAiRequest,
   pickProvider,
+  resolvedArticleModel,
   type Settings,
 } from "./requests.ts";
 
@@ -17,6 +18,29 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   model: "llama3.2",
   devinPort: 0,
   ...over,
+});
+
+test("resolvedArticleModel is the label a saved article would match", () => {
+  assert.equal(
+    resolvedArticleModel(settings({ providerType: "ollama", model: "qwen2.5" })),
+    "qwen2.5",
+  );
+  assert.equal(
+    resolvedArticleModel(settings({ providerType: "devin_bridge" })),
+    "Devin Local Bridge",
+  );
+  assert.equal(
+    resolvedArticleModel(settings({ providerType: "openai", model: "gpt-4o" })),
+    "gpt-4o",
+  );
+});
+
+test("modelOverride is sent exactly, even when it is the Ollama default name", () => {
+  const over = settings({ model: "gpt-4o", modelOverride: "llama3.2" });
+  assert.equal(openAiRequest(over, "s", "u").model, "llama3.2");
+  assert.equal(ollamaRequest({ ...over, providerType: "ollama" }, "s", "u").model, "llama3.2");
+  assert.equal(anthropicRequest(over, "s", "u").model, "llama3.2");
+  assert.equal(geminiRequest(over, "s", "u").model, "llama3.2");
 });
 
 test("modelOrDefault treats the Ollama default as 'not chosen'", () => {

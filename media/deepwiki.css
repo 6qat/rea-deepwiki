@@ -13,6 +13,9 @@
   --vscode-toolbar-hoverBackground: #1e293b;
   --vscode-focusBorder: #38bdf8;
   --vscode-panel-border: #1e293b;
+  --vscode-dropdown-background: #111827;
+  --vscode-dropdown-foreground: #f1f5f9;
+  --vscode-dropdown-border: #334155;
   --vscode-textSeparator-foreground: #1e293b;
   --vscode-contrastBorder: #334155;
   --vscode-scrollbarSlider-background: rgba(148, 163, 184, 0.2);
@@ -160,6 +163,28 @@ body {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.deepwiki-history-select {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  height: 26px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+}
+.deepwiki-history-select:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+.deepwiki-history-select[hidden] {
+  display: none;
 }
 
 .deepwiki-btn {

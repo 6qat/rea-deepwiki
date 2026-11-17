@@ -53,12 +53,6 @@ export function getDeepWikiWebviewContent(
             </div>
           </div>
           <div class="deepwiki-symbol-actions">
-            <button id="btn-back" class="deepwiki-btn" title="${strings.back}" disabled>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
-            </button>
-            <button id="btn-forward" class="deepwiki-btn" title="${strings.forward}" disabled>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            </button>
             <button id="btn-copy" class="deepwiki-btn" title="${strings.copyMarkdown}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             </button>
@@ -68,6 +62,7 @@ export function getDeepWikiWebviewContent(
           </div>
         </div>
       </div>
+      <select id="history-select" class="deepwiki-history-select" hidden aria-label="${strings.history}"></select>
     </header>
 
     <!-- Main Content Container -->

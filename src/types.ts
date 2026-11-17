@@ -35,14 +35,18 @@ export interface DeepWikiArticle {
 
 export type OutputLanguage = "en" | "pt-BR";
 
+export interface HistoryEntry {
+  name: string;
+  model: string;
+}
+
 export type WebviewToExtensionMessage =
   | { type: "openFileLocation"; uri: string; line: number; column?: number }
   | { type: "openFileCitation"; path: string; line: number }
   | { type: "followupClick"; question: string; qaId?: string }
   | { type: "askCustomQuestion"; question: string; qaId?: string }
   | { type: "openInHermes"; question: string; answer?: string }
-  | { type: "historyBack" }
-  | { type: "historyForward" }
+  | { type: "historySelect"; index: number }
   | { type: "copyMarkdown"; markdown: string }
   | { type: "refresh" };
 
@@ -58,7 +62,7 @@ export type ExtensionToWebviewMessage =
       qas?: DeepWikiQA[];
     }
   | { type: "streamError"; message: string }
-  | { type: "setHistoryState"; hasBack: boolean; hasForward: boolean }
+  | { type: "setHistoryState"; index: number; entries: HistoryEntry[] }
   | { type: "qaStreamStart"; qaId: string; question: string }
   | { type: "qaStreamDelta"; qaId: string; delta: string }
   | {

@@ -71,8 +71,21 @@ test("host messages become one panel state", () => {
   assert.equal(view.qas[1]?.markdown, "Because.");
   assert.equal(view.qas[1]?.modelType, "fake");
 
-  view = applyHostMessage(view, { type: "setHistoryState", hasBack: true, hasForward: false });
-  assert.deepEqual(view.history, { hasBack: true, hasForward: false });
+  view = applyHostMessage(view, {
+    type: "setHistoryState",
+    index: 1,
+    entries: [
+      { name: "Foo", model: "llama3.2" },
+      { name: "Foo", model: "gpt-4o" },
+    ],
+  });
+  assert.deepEqual(view.history, {
+    index: 1,
+    entries: [
+      { name: "Foo", model: "llama3.2" },
+      { name: "Foo", model: "gpt-4o" },
+    ],
+  });
 
   view = applyHostMessage(view, { type: "qaStreamError", qaId: "qa-1", message: "nope" });
   assert.equal(view.qas[1]?.status, "error");

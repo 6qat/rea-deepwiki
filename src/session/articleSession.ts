@@ -30,13 +30,16 @@ export type SessionStreamProvider = {
 export type FollowupAction = "inline" | "hermes" | "deepwiki" | "clipboard";
 
 export interface ArticleSessionDeps {
-  createProvider(): SessionStreamProvider;
+  /** `model` forces the article's model. Omitted requests use the current settings. */
+  createProvider(model?: string): SessionStreamProvider;
   emit(message: ExtensionToWebviewMessage): void;
   getFollowupAction(): string;
   writeClipboard(text: string): PromiseLike<void>;
   sendToHermes(promptText: string): Promise<void>;
   warn(message: string): void;
   info(message: string): void;
+  /** Model the next article would be labeled with. */
+  getModel(): string;
 }
 
 /**
@@ -78,20 +81,37 @@ export class ArticleSession {
     this.emitHistoryState();
   }
 
-  public async loadSymbol(symbol: DeepWikiSymbol, pushHistory = true): Promise<void> {
+  public async loadSymbol(
+    symbol: DeepWikiSymbol,
+    pushHistory = true,
+    model?: string,
+  ): Promise<void> {
     this._currentAbortController?.abort();
-    this._currentAbortController = new AbortController();
+    this._currentAbortController = undefined;
 
     if (this._currentQaAbortController) {
       this._currentQaAbortController.abort();
       this._currentQaAbortController = undefined;
     }
 
+    const requestedModel = model ?? this.deps.getModel();
+    if (pushHistory) {
+      const existing = this.findSaved(symbol, requestedModel);
+      if (existing >= 0) {
+        if (existing !== this._historyIndex) {
+          this._historyIndex = existing;
+          this.emitCurrent();
+        }
+        return;
+      }
+    }
+
+    this._currentAbortController = new AbortController();
     this.deps.emit({ type: "setSymbol", symbol });
 
     const signal = this._currentAbortController.signal;
     try {
-      const provider = this.deps.createProvider();
+      const provider = this.deps.createProvider(model);
       const result = await provider.streamArticle(
         symbol,
         (delta) => this.deps.emit({ type: "streamDelta", delta }),
@@ -149,6 +169,31 @@ export class ArticleSession {
     this.emitCurrent();
   }
 
+  /** Newest saved article for this term and model, or -1. */
+  private findSaved(symbol: DeepWikiSymbol, model: string): number {
+    if (!model) return -1;
+    for (let i = this._history.length - 1; i >= 0; i--) {
+      const article = this._history[i];
+      if (!article) continue;
+      if (
+        article.symbol.name === symbol.name &&
+        article.symbol.uri === symbol.uri &&
+        article.modelType === model
+      ) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /** Shows an earlier or later article. Ignores an index that is not in history. */
+  public navigateTo(index: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this._history.length) return;
+    if (index === this._historyIndex) return;
+    this._historyIndex = index;
+    this.emitCurrent();
+  }
+
   public async handleFollowup(question: string, providedQaId?: string): Promise<void> {
     const current = this.currentArticle;
     if (!current) {
@@ -169,7 +214,7 @@ export class ArticleSession {
         name: `${current.symbol.name} • ${question}`,
         kind: "Follow-up",
       };
-      await this.loadSymbol(questionSymbol);
+      await this.loadSymbol(questionSymbol, true, current.modelType);
       return;
     }
 
@@ -205,7 +250,7 @@ export class ArticleSession {
 
     const signal = this._currentQaAbortController.signal;
     try {
-      const provider = this.deps.createProvider();
+      const provider = this.deps.createProvider(current.modelType);
       const result = await provider.streamQuestion(
         current.symbol,
         current.markdown,
@@ -259,8 +304,11 @@ export class ArticleSession {
   private emitHistoryState(): void {
     this.deps.emit({
       type: "setHistoryState",
-      hasBack: this.canGoBack,
-      hasForward: this.canGoForward,
+      index: this._historyIndex,
+      entries: this._history.map((article) => ({
+        name: article.symbol.name,
+        model: article.modelType,
+      })),
     });
   }
 }

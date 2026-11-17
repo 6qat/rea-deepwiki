@@ -51,6 +51,21 @@ test("article and follow-up prompts are the bytes posted", async () => {
   assert.match(bodies[1]?.messages[1]?.content ?? "", /Follow-up Question:\nWhy\?/);
 });
 
+test("a follow-up posts the overridden model", async () => {
+  const bodies: { model?: string }[] = [];
+  const transport: Transport = async (_url, init) => {
+    bodies.push(JSON.parse(init.body) as { model?: string });
+    return openAiBody("Because");
+  };
+  const generator = createGenerator(
+    settings({ model: "gpt-4o", modelOverride: "hy4-flash" }),
+    transport,
+  );
+  const result = await generator.streamQuestion(symbol, "article", "Why?", () => {});
+  assert.equal(bodies[0]?.model, "hy4-flash");
+  assert.equal(result.modelType, "hy4-flash");
+});
+
 test("a non-OK chat response fails and is not retried", async () => {
   let calls = 0;
   const transport: Transport = async () => {

@@ -2,6 +2,7 @@ import type {
   DeepWikiQA,
   DeepWikiSymbol,
   ExtensionToWebviewMessage,
+  HistoryEntry,
   OutputLanguage,
 } from "../types.ts";
 
@@ -23,8 +24,7 @@ export interface PanelQa {
 export interface PanelStrings {
   tagEncyclopedia: string;
   noSymbolSelected: string;
-  back: string;
-  forward: string;
+  history: string;
   copyMarkdown: string;
   refresh: string;
   welcomeTitle: string;
@@ -51,8 +51,7 @@ export const PANEL_STRINGS: Record<OutputLanguage, PanelStrings> = {
   en: {
     tagEncyclopedia: "Encyclopedia",
     noSymbolSelected: "No symbol selected",
-    back: "Back",
-    forward: "Forward",
+    history: "Researched terms",
     copyMarkdown: "Copy Markdown",
     refresh: "Refresh",
     welcomeTitle: "Welcome to DeepWiki",
@@ -79,8 +78,7 @@ export const PANEL_STRINGS: Record<OutputLanguage, PanelStrings> = {
   "pt-BR": {
     tagEncyclopedia: "Enciclopédia",
     noSymbolSelected: "Nenhum símbolo selecionado",
-    back: "Voltar",
-    forward: "Avançar",
+    history: "Termos pesquisados",
     copyMarkdown: "Copiar Markdown",
     refresh: "Atualizar",
     welcomeTitle: "Bem-vindo ao DeepWiki",
@@ -159,7 +157,10 @@ export interface PanelView {
   error: string | null;
   followups: string[];
   qas: PanelQa[];
-  history: { hasBack: boolean; hasForward: boolean };
+  history: {
+    index: number;
+    entries: HistoryEntry[];
+  };
   language: OutputLanguage;
 }
 
@@ -186,7 +187,7 @@ export function initialPanelView(lang: OutputLanguage = "en"): PanelView {
     error: null,
     followups: [],
     qas: [],
-    history: { hasBack: false, hasForward: false },
+    history: { index: -1, entries: [] },
     language: lang,
   };
 }
@@ -251,7 +252,7 @@ export function applyHostMessage(view: PanelView, message: ExtensionToWebviewMes
     case "setHistoryState":
       return {
         ...view,
-        history: { hasBack: message.hasBack, hasForward: message.hasForward },
+        history: { index: message.index, entries: message.entries },
       };
     case "qaStreamStart":
       return {

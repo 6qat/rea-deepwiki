@@ -18,12 +18,14 @@ class FakeProvider implements SessionStreamProvider {
   questionResult: QuestionStreamResult = { fullMarkdown: "answer", modelType: "fake" };
   articleError?: unknown;
   questionError?: unknown;
+  articleCalls = 0;
 
   async streamArticle(
     _symbol: DeepWikiSymbol,
     onDelta: (delta: string) => void,
     _abortSignal?: AbortSignal,
   ): Promise<ArticleStreamResult> {
+    this.articleCalls++;
     if (this.articleError) throw this.articleError;
     onDelta("chunk");
     return this.articleResult;
@@ -78,6 +80,7 @@ function harness(overrides: Partial<ArticleSessionDeps> = {}) {
     info: (message) => {
       calls.infos.push(message);
     },
+    getModel: () => provider.articleResult.modelType,
     ...overrides,
   };
 
@@ -99,6 +102,75 @@ test("loadSymbol streams and emits a completed article", async () => {
   assert.equal(session.currentArticle?.symbol.name, "alpha");
   assert.equal(session.currentArticle?.markdown, "article");
   assert.equal(session.canGoBack, false);
+});
+
+test("the same term and model reopens the saved article", async () => {
+  const { session, provider } = harness();
+  provider.articleResult = {
+    fullMarkdown: "from-llama",
+    followupQuestions: [],
+    modelType: "llama3.2",
+  };
+  await session.loadSymbol(sym("alpha"));
+
+  provider.articleResult = {
+    fullMarkdown: "should-not-run",
+    followupQuestions: [],
+    modelType: "llama3.2",
+  };
+  await session.loadSymbol(sym("alpha"));
+
+  assert.equal(provider.articleCalls, 1);
+  assert.equal(session.currentArticle?.markdown, "from-llama");
+  assert.equal(session.canGoBack, false);
+
+  const elsewhere = { ...sym("alpha"), uri: "file:///src/other.ts", relativePath: "src/other.ts" };
+  await session.loadSymbol(elsewhere);
+  assert.equal(provider.articleCalls, 2);
+  assert.equal(session.currentArticle?.symbol.uri, elsewhere.uri);
+});
+
+test("the same symbol with two models stays as two labeled history steps", async () => {
+  const { session, provider, events } = harness();
+  provider.articleResult = {
+    fullMarkdown: "from-llama",
+    followupQuestions: [],
+    modelType: "llama3.2",
+  };
+  await session.loadSymbol(sym("alpha"));
+
+  provider.articleResult = {
+    fullMarkdown: "from-gpt",
+    followupQuestions: [],
+    modelType: "gpt-4o",
+  };
+  await session.loadSymbol(sym("alpha"));
+
+  assert.equal(session.canGoBack, true);
+  assert.equal(session.currentArticle?.modelType, "gpt-4o");
+  assert.equal(session.currentArticle?.markdown, "from-gpt");
+
+  const latest = [...events].reverse().find((event) => event.type === "setHistoryState");
+  assert.equal(latest?.type === "setHistoryState" && latest.index, 1);
+  assert.deepEqual(latest?.type === "setHistoryState" && latest.entries, [
+    { name: "alpha", model: "llama3.2" },
+    { name: "alpha", model: "gpt-4o" },
+  ]);
+
+  events.length = 0;
+  session.navigateTo(0);
+
+  assert.equal(session.currentArticle?.modelType, "llama3.2");
+  assert.equal(session.currentArticle?.markdown, "from-llama");
+  const complete = events.find((event) => event.type === "streamComplete");
+  assert.equal(complete?.type === "streamComplete" && complete.modelType, "llama3.2");
+  const history = events.find((event) => event.type === "setHistoryState");
+  assert.equal(history?.type === "setHistoryState" && history.index, 0);
+  assert.equal(history?.type === "setHistoryState" && history.entries[1]?.model, "gpt-4o");
+
+  session.navigateTo(0);
+  session.navigateTo(9);
+  assert.equal(session.currentArticle?.modelType, "llama3.2");
 });
 
 test("navigation walks the history and re-emits the article", async () => {
@@ -159,6 +231,50 @@ test("a failing article stream reports the error", async () => {
 
   const error = events.find((event) => event.type === "streamError");
   assert.equal(error?.type === "streamError" && error.message, "boom");
+});
+
+test("a follow-up answer uses the article model, not the configured one", async () => {
+  const models: Array<string | undefined> = [];
+  const { session, provider } = harness({
+    getModel: () => "settings-model",
+    createProvider: (model) => {
+      models.push(model);
+      return provider;
+    },
+  });
+  provider.articleResult = {
+    fullMarkdown: "from-llama",
+    followupQuestions: [],
+    modelType: "llama3.2",
+  };
+
+  await session.loadSymbol(sym("alpha"));
+  await session.handleFollowup("why?");
+
+  assert.deepEqual(models, [undefined, "llama3.2"]);
+});
+
+test("a deepwiki follow-up article is generated with the article model", async () => {
+  const models: Array<string | undefined> = [];
+  const { session, provider } = harness({
+    getFollowupAction: () => "deepwiki",
+    getModel: () => "settings-model",
+    createProvider: (model) => {
+      models.push(model);
+      return provider;
+    },
+  });
+  provider.articleResult = {
+    fullMarkdown: "from-llama",
+    followupQuestions: [],
+    modelType: "llama3.2",
+  };
+
+  await session.loadSymbol(sym("alpha"));
+  await session.handleFollowup("why?");
+
+  assert.deepEqual(models, [undefined, "llama3.2"]);
+  assert.equal(session.currentArticle?.symbol.name, "alpha • why?");
 });
 
 test("inline follow-up streams an answer and records it on the article", async () => {

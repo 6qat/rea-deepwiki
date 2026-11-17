@@ -15,6 +15,8 @@ export interface Settings {
   model: string;
   devinPort: number;
   outputLanguage?: string;
+  /** Exact model for this request. Skips the Ollama-default substitution. */
+  modelOverride?: string;
 }
 
 const OLLAMA_URL = "http://localhost:11434";
@@ -72,9 +74,10 @@ export function openAiRequest(settings: Settings, system: string, user: string):
   const baseUrl = bareOllamaRoot ? "https://api.openai.com/v1" : configured;
   // Only OpenAI itself can't serve the Ollama default; LM Studio, vLLM etc. may well serve llama3.2.
   const model =
-    bareOllamaRoot || baseUrl.includes("api.openai.com")
+    settings.modelOverride ||
+    (bareOllamaRoot || baseUrl.includes("api.openai.com")
       ? modelOrDefault(settings.model, "gpt-4o-mini")
-      : settings.model || "gpt-4o-mini";
+      : settings.model || "gpt-4o-mini");
 
   if (!settings.apiKey && !isLocalHost(baseUrl)) {
     throw new Error("API Key is required. Set it in DeepWiki settings.");
@@ -102,7 +105,7 @@ export function openAiRequest(settings: Settings, system: string, user: string):
 
 export function ollamaRequest(settings: Settings, system: string, user: string): ChatRequest {
   const baseUrl = settings.baseUrl.replace(/\/+$/, "") || OLLAMA_URL;
-  const model = settings.model || OLLAMA_MODEL;
+  const model = settings.modelOverride || settings.model || OLLAMA_MODEL;
   return {
     label: "Ollama",
     endpoint: `${baseUrl}/api/generate`,
@@ -117,7 +120,8 @@ export function anthropicRequest(settings: Settings, system: string, user: strin
   if (!settings.apiKey) {
     throw new Error("Anthropic API Key is required. Set it in DeepWiki settings.");
   }
-  const model = modelOrDefault(settings.model, "claude-3-5-sonnet-latest");
+  const model =
+    settings.modelOverride || modelOrDefault(settings.model, "claude-3-5-sonnet-latest");
   return {
     label: "Anthropic",
     endpoint: "https://api.anthropic.com/v1/messages",
@@ -138,11 +142,26 @@ export function anthropicRequest(settings: Settings, system: string, user: strin
   };
 }
 
+/** The model label an article would be stored under, before any request is sent. */
+export function resolvedArticleModel(settings: Settings): string {
+  const kind = pickProvider(settings);
+  if (kind === "devin_bridge") return "Devin Local Bridge";
+  const request =
+    kind === "openai"
+      ? openAiRequest(settings, "", "")
+      : kind === "anthropic"
+        ? anthropicRequest(settings, "", "")
+        : kind === "gemini"
+          ? geminiRequest(settings, "", "")
+          : ollamaRequest(settings, "", "");
+  return request.model;
+}
+
 export function geminiRequest(settings: Settings, system: string, user: string): ChatRequest {
   if (!settings.apiKey) {
     throw new Error("Gemini API Key is required. Set it in DeepWiki settings.");
   }
-  const model = modelOrDefault(settings.model, "gemini-2.0-flash");
+  const model = settings.modelOverride || modelOrDefault(settings.model, "gemini-2.0-flash");
   return {
     label: "Gemini",
     // Key in a header, not the query string: URLs end up in logs and error messages.
