@@ -160,3 +160,28 @@ test("panel strings provide localized labels for the model combobox", () => {
   assert.ok(en.deleteModel.length > 0);
   assert.notEqual(pt.selectModel, en.selectModel);
 });
+
+test("comboboxes are disabled while the article is streaming and re-enabled on completion or error", () => {
+  let view = initialPanelView();
+  assert.equal(view.comboboxesDisabled, false);
+
+  view = applyHostMessage(view, { type: "setSymbol", symbol });
+  assert.equal(view.comboboxesDisabled, true);
+
+  view = applyHostMessage(view, { type: "streamDelta", delta: "chunk" });
+  assert.equal(view.comboboxesDisabled, true);
+
+  view = applyHostMessage(view, {
+    type: "streamComplete",
+    fullMarkdown: "chunk",
+    followupQuestions: [],
+    modelType: "llama3.2",
+  });
+  assert.equal(view.comboboxesDisabled, false);
+
+  view = applyHostMessage(view, { type: "setSymbol", symbol });
+  assert.equal(view.comboboxesDisabled, true);
+
+  view = applyHostMessage(view, { type: "streamError", message: "boom" });
+  assert.equal(view.comboboxesDisabled, false);
+});

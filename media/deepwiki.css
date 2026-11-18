@@ -176,6 +176,12 @@ body {
   position: relative;
   flex: 1 1 150px;
   min-width: 0;
+  transition: opacity 0.15s ease;
+}
+
+.deepwiki-model-combobox.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .deepwiki-model-trigger {
@@ -205,6 +211,10 @@ body {
 .deepwiki-model-trigger:focus {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
+}
+.deepwiki-model-trigger:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .deepwiki-model-trigger-icon {
@@ -411,6 +421,12 @@ body {
   background: var(--vscode-dropdown-background);
   border: 1px solid var(--vscode-dropdown-border);
   border-radius: 4px;
+  transition: opacity 0.15s ease;
+}
+.deepwiki-history-select:disabled,
+.deepwiki-history-select.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .deepwiki-history-select:focus {
   outline: 1px solid var(--vscode-focusBorder);

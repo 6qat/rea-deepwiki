@@ -120,6 +120,7 @@ declare const hljs: {
 
   function setModelDropdownOpen(open: boolean): void {
     if (!modelDropdown || !modelTrigger) return;
+    if (open && view.comboboxesDisabled) return;
     modelDropdownOpen = open;
     modelDropdown.hidden = !open;
     modelTrigger.setAttribute("aria-expanded", String(open));
@@ -232,7 +233,7 @@ declare const hljs: {
   }
 
   function submitNewModel(): void {
-    if (!modelInput) return;
+    if (!modelInput || view.comboboxesDisabled) return;
     const model = modelInput.value.trim();
     if (!model) return;
     vscode.postMessage({ type: "addModel", model });
@@ -290,6 +291,26 @@ declare const hljs: {
     paintFollowups();
     resetFollowupBubbles();
     paintQas();
+    paintComboboxDisabledState();
+  }
+
+  function paintComboboxDisabledState(): void {
+    const disabled = view.comboboxesDisabled;
+    if (disabled && modelDropdownOpen) {
+      setModelDropdownOpen(false);
+    }
+    if (modelCombobox) {
+      modelCombobox.classList.toggle("is-disabled", disabled);
+    }
+    if (modelTrigger) {
+      modelTrigger.disabled = disabled;
+      modelTrigger.setAttribute("aria-disabled", String(disabled));
+    }
+    if (historySelect) {
+      historySelect.disabled = disabled;
+      historySelect.classList.toggle("is-disabled", disabled);
+      historySelect.setAttribute("aria-disabled", String(disabled));
+    }
   }
 
   function resetFollowupBubbles(): void {
@@ -611,6 +632,7 @@ declare const hljs: {
   });
 
   historySelect?.addEventListener("change", () => {
+    if (view.comboboxesDisabled) return;
     const index = Number(historySelect.value);
     if (!Number.isInteger(index) || index === view.history.index) return;
     vscode.postMessage({ type: "historySelect", index });

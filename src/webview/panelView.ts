@@ -163,6 +163,7 @@ export interface PanelView {
   showSkeleton: boolean;
   showBody: boolean;
   streaming: boolean;
+  comboboxesDisabled: boolean;
   header: PanelHeader;
   symbol: DeepWikiSymbol | null;
   modelBadge: string | null;
@@ -194,6 +195,7 @@ export function initialPanelView(lang: OutputLanguage = "en"): PanelView {
     showSkeleton: false,
     showBody: false,
     streaming: false,
+    comboboxesDisabled: false,
     header: welcomeHeader(lang),
     symbol: null,
     modelBadge: null,
@@ -230,6 +232,7 @@ export function applyHostMessage(view: PanelView, message: ExtensionToWebviewMes
         showSkeleton: true,
         showBody: false,
         streaming: true,
+        comboboxesDisabled: true,
         header: headerFor(message.symbol, view.language),
         symbol: message.symbol,
         modelBadge: null,
@@ -254,6 +257,7 @@ export function applyHostMessage(view: PanelView, message: ExtensionToWebviewMes
         showSkeleton: false,
         showBody: true,
         streaming: false,
+        comboboxesDisabled: false,
         modelBadge: message.modelType || null,
         markdown: message.fullMarkdown,
         error: null,
@@ -266,6 +270,7 @@ export function applyHostMessage(view: PanelView, message: ExtensionToWebviewMes
         showSkeleton: false,
         showBody: true,
         streaming: false,
+        comboboxesDisabled: false,
         error: message.message,
         followups: [],
       };
