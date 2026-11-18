@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
 import type { OutputLanguage } from "../types";
+import { DEFAULT_MODEL, type ModelState } from "./modelList";
 import { getPanelStrings } from "./panelView";
 
 export function getDeepWikiWebviewContent(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
   language: OutputLanguage = "en",
+  modelState: ModelState = { currentModel: DEFAULT_MODEL, models: [DEFAULT_MODEL] },
 ): string {
   const strings = getPanelStrings(language);
   const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "deepwiki.css"));
@@ -62,7 +64,63 @@ export function getDeepWikiWebviewContent(
           </div>
         </div>
       </div>
-      <select id="history-select" class="deepwiki-history-select" hidden aria-label="${strings.history}"></select>
+      <div class="deepwiki-header-controls">
+        <div id="model-combobox" class="deepwiki-model-combobox">
+          <button
+            id="model-combobox-trigger"
+            type="button"
+            class="deepwiki-model-trigger"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            aria-label="${strings.selectModel}"
+            title="${strings.selectModel}"
+          >
+            <svg class="deepwiki-model-trigger-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+              <rect x="9" y="9" width="6" height="6"></rect>
+              <line x1="9" y1="1" x2="9" y2="4"></line>
+              <line x1="15" y1="1" x2="15" y2="4"></line>
+              <line x1="9" y1="20" x2="9" y2="23"></line>
+              <line x1="15" y1="20" x2="15" y2="23"></line>
+              <line x1="20" y1="9" x2="23" y2="9"></line>
+              <line x1="20" y1="14" x2="23" y2="14"></line>
+              <line x1="1" y1="9" x2="4" y2="9"></line>
+              <line x1="1" y1="14" x2="4" y2="14"></line>
+            </svg>
+            <span id="model-combobox-value" class="deepwiki-model-trigger-value">${escapeHtml(modelState.currentModel)}</span>
+            <svg class="deepwiki-model-trigger-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          <div id="model-combobox-dropdown" class="deepwiki-model-dropdown" hidden>
+            <div class="deepwiki-model-input-row">
+              <input
+                type="text"
+                id="model-combobox-input"
+                class="deepwiki-model-input"
+                placeholder="${strings.addModelPlaceholder}"
+                aria-label="${strings.addModelPlaceholder}"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button
+                id="model-combobox-add"
+                type="button"
+                class="deepwiki-model-add-btn"
+                title="${strings.addModel}"
+                aria-label="${strings.addModel}"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+            </div>
+            <div id="model-combobox-list" class="deepwiki-model-list" role="listbox" aria-label="${strings.selectModel}"></div>
+          </div>
+        </div>
+        <select id="history-select" class="deepwiki-history-select" hidden aria-label="${strings.history}"></select>
+      </div>
     </header>
 
     <!-- Main Content Container -->
@@ -130,6 +188,14 @@ export function getDeepWikiWebviewContent(
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function getNonce(): string {

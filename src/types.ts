@@ -41,6 +41,7 @@ export interface HistoryEntry {
 }
 
 export type WebviewToExtensionMessage =
+  | { type: "ready" }
   | { type: "openFileLocation"; uri: string; line: number; column?: number }
   | { type: "openFileCitation"; path: string; line: number }
   | { type: "followupClick"; question: string; qaId?: string }
@@ -48,10 +49,14 @@ export type WebviewToExtensionMessage =
   | { type: "openInHermes"; question: string; answer?: string }
   | { type: "historySelect"; index: number }
   | { type: "copyMarkdown"; markdown: string }
-  | { type: "refresh" };
+  | { type: "refresh" }
+  | { type: "selectModel"; model: string }
+  | { type: "addModel"; model: string }
+  | { type: "deleteModel"; model: string };
 
 export type ExtensionToWebviewMessage =
   | { type: "setLanguage"; language: OutputLanguage }
+  | { type: "setModelState"; currentModel: string; models: string[] }
   | { type: "setSymbol"; symbol: DeepWikiSymbol }
   | { type: "streamDelta"; delta: string }
   | {

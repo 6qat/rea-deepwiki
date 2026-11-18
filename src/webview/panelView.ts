@@ -5,6 +5,7 @@ import type {
   HistoryEntry,
   OutputLanguage,
 } from "../types.ts";
+import { DEFAULT_MODEL, type ModelState, normalizeModelState } from "./modelList.ts";
 
 export interface PanelHeader {
   name: string;
@@ -45,6 +46,10 @@ export interface PanelStrings {
   errorPrefix: string;
   continueInHermes: string;
   hermesLabel: string;
+  selectModel: string;
+  addModelPlaceholder: string;
+  addModel: string;
+  deleteModel: string;
 }
 
 export const PANEL_STRINGS: Record<OutputLanguage, PanelStrings> = {
@@ -74,6 +79,10 @@ export const PANEL_STRINGS: Record<OutputLanguage, PanelStrings> = {
     errorPrefix: "Error:",
     continueInHermes: "Continue in Hermes Studio",
     hermesLabel: "Hermes ↗",
+    selectModel: "Select model",
+    addModelPlaceholder: "New model name...",
+    addModel: "Add model",
+    deleteModel: "Remove model",
   },
   "pt-BR": {
     tagEncyclopedia: "Enciclopédia",
@@ -101,6 +110,10 @@ export const PANEL_STRINGS: Record<OutputLanguage, PanelStrings> = {
     errorPrefix: "Erro:",
     continueInHermes: "Continuar no Hermes Studio",
     hermesLabel: "Hermes ↗",
+    selectModel: "Selecionar modelo",
+    addModelPlaceholder: "Novo modelo...",
+    addModel: "Adicionar modelo",
+    deleteModel: "Remover modelo",
   },
 };
 
@@ -161,6 +174,7 @@ export interface PanelView {
     index: number;
     entries: HistoryEntry[];
   };
+  modelState: ModelState;
   language: OutputLanguage;
 }
 
@@ -188,6 +202,7 @@ export function initialPanelView(lang: OutputLanguage = "en"): PanelView {
     followups: [],
     qas: [],
     history: { index: -1, entries: [] },
+    modelState: { currentModel: DEFAULT_MODEL, models: [DEFAULT_MODEL] },
     language: lang,
   };
 }
@@ -201,6 +216,11 @@ export function applyHostMessage(view: PanelView, message: ExtensionToWebviewMes
         header: view.symbol
           ? headerFor(view.symbol, message.language)
           : welcomeHeader(message.language),
+      };
+    case "setModelState":
+      return {
+        ...view,
+        modelState: normalizeModelState(message.currentModel, message.models),
       };
     case "setSymbol":
       return {

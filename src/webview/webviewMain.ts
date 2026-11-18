@@ -1,4 +1,5 @@
 import type { WebviewToExtensionMessage } from "../types.ts";
+import { DEFAULT_MODEL } from "./modelList.ts";
 import { applyHostMessage, getPanelStrings, initialPanelView, type PanelQa } from "./panelView.ts";
 
 declare function acquireVsCodeApi(): {
@@ -36,15 +37,26 @@ declare const hljs: {
   const qaContainer = required("qa-container");
   const qaList = required("qa-list");
   const historySelect = document.getElementById("history-select") as HTMLSelectElement | null;
+  const modelCombobox = document.getElementById("model-combobox");
+  const modelTrigger = document.getElementById(
+    "model-combobox-trigger",
+  ) as HTMLButtonElement | null;
+  const modelValueEl = document.getElementById("model-combobox-value");
+  const modelDropdown = document.getElementById("model-combobox-dropdown");
+  const modelInput = document.getElementById("model-combobox-input") as HTMLInputElement | null;
+  const modelAddBtn = document.getElementById("model-combobox-add") as HTMLButtonElement | null;
+  const modelListEl = document.getElementById("model-combobox-list");
   const refreshBtn = document.getElementById("btn-refresh");
   const copyBtn = document.getElementById("btn-copy");
 
-  let view = initialPanelView();
+  let view = initialPanelView(document.documentElement.lang === "pt-BR" ? "pt-BR" : "en");
   let renderedArticle = "";
   let followupKey = "";
   let symbolKey = "";
   let historyKey = "";
   let renderQueued = false;
+  let modelDropdownOpen = false;
+  let modelFilter = "";
 
   if (typeof marked !== "undefined") {
     marked.use({
@@ -106,6 +118,127 @@ declare const hljs: {
     if (historySelect.value !== nextValue) historySelect.value = nextValue;
   }
 
+  function setModelDropdownOpen(open: boolean): void {
+    if (!modelDropdown || !modelTrigger) return;
+    modelDropdownOpen = open;
+    modelDropdown.hidden = !open;
+    modelTrigger.setAttribute("aria-expanded", String(open));
+    if (open) {
+      modelFilter = "";
+      if (modelInput) modelInput.value = "";
+      paintModelList();
+      modelInput?.focus();
+    } else {
+      modelFilter = "";
+      if (modelInput) modelInput.value = "";
+    }
+  }
+
+  function paintModelCombobox(): void {
+    const strings = getPanelStrings(view.language);
+    const { currentModel } = view.modelState;
+    if (modelValueEl) modelValueEl.textContent = currentModel;
+    if (modelTrigger) {
+      modelTrigger.setAttribute("aria-label", strings.selectModel);
+      modelTrigger.title = `${strings.selectModel}: ${currentModel}`;
+    }
+    if (modelInput) {
+      modelInput.placeholder = strings.addModelPlaceholder;
+      modelInput.setAttribute("aria-label", strings.addModelPlaceholder);
+    }
+    if (modelAddBtn) {
+      modelAddBtn.title = strings.addModel;
+      modelAddBtn.setAttribute("aria-label", strings.addModel);
+    }
+    if (modelListEl) {
+      modelListEl.setAttribute("aria-label", strings.selectModel);
+    }
+    paintModelList();
+  }
+
+  function paintModelList(): void {
+    if (!modelListEl) return;
+    const strings = getPanelStrings(view.language);
+    const { currentModel, models } = view.modelState;
+    const query = modelFilter.trim();
+    const lowered = query.toLowerCase();
+
+    if (modelAddBtn) {
+      modelAddBtn.disabled = !query;
+    }
+
+    const filtered = lowered ? models.filter((m) => m.toLowerCase().includes(lowered)) : models;
+    const items: HTMLElement[] = [];
+
+    for (const model of filtered) {
+      const row = document.createElement("div");
+      const isActive = model === currentModel;
+      row.className = isActive ? "deepwiki-model-option active" : "deepwiki-model-option";
+
+      const selectBtn = document.createElement("button");
+      selectBtn.type = "button";
+      selectBtn.className = "deepwiki-model-option-btn";
+      selectBtn.setAttribute("role", "option");
+      selectBtn.setAttribute("aria-selected", String(isActive));
+      selectBtn.title = model;
+
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "deepwiki-model-option-name";
+      labelSpan.textContent = model;
+      selectBtn.appendChild(labelSpan);
+
+      if (isActive) {
+        const check = document.createElement("span");
+        check.className = "deepwiki-model-option-check";
+        check.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        selectBtn.appendChild(check);
+      }
+
+      selectBtn.addEventListener("click", () => {
+        vscode.postMessage({ type: "selectModel", model });
+        setModelDropdownOpen(false);
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "deepwiki-model-delete-btn";
+      deleteBtn.title = strings.deleteModel;
+      deleteBtn.setAttribute("aria-label", `${strings.deleteModel}: ${model}`);
+      deleteBtn.disabled = models.length === 1 && model === DEFAULT_MODEL;
+      deleteBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+      deleteBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        vscode.postMessage({ type: "deleteModel", model });
+      });
+
+      row.appendChild(selectBtn);
+      row.appendChild(deleteBtn);
+      items.push(row);
+    }
+
+    if (query && !models.includes(query)) {
+      const addRow = document.createElement("button");
+      addRow.type = "button";
+      addRow.className = "deepwiki-model-create-row";
+      addRow.textContent = `+ ${strings.addModel}: "${query}"`;
+      addRow.addEventListener("click", () => {
+        vscode.postMessage({ type: "addModel", model: query });
+        setModelDropdownOpen(false);
+      });
+      items.push(addRow);
+    }
+
+    modelListEl.replaceChildren(...items);
+  }
+
+  function submitNewModel(): void {
+    if (!modelInput) return;
+    const model = modelInput.value.trim();
+    if (!model) return;
+    vscode.postMessage({ type: "addModel", model });
+    setModelDropdownOpen(false);
+  }
+
   function paint(): void {
     const strings = getPanelStrings(view.language);
     const nextSymbolKey = view.symbol ? `${view.symbol.uri}\n${view.symbol.name}` : "";
@@ -136,6 +269,7 @@ declare const hljs: {
     if (customQuestionInput) customQuestionInput.placeholder = strings.askQuestionPlaceholder;
     if (customQuestionBtn) customQuestionBtn.title = strings.sendQuestion;
 
+    paintModelCombobox();
     paintHistory();
     if (copyBtn) copyBtn.title = strings.copyMarkdown;
     if (refreshBtn) refreshBtn.title = strings.refresh;
@@ -481,6 +615,40 @@ declare const hljs: {
     if (!Number.isInteger(index) || index === view.history.index) return;
     vscode.postMessage({ type: "historySelect", index });
   });
+
+  modelTrigger?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setModelDropdownOpen(!modelDropdownOpen);
+  });
+  modelDropdown?.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+  modelInput?.addEventListener("input", () => {
+    modelFilter = modelInput.value;
+    paintModelList();
+  });
+  modelInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitNewModel();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setModelDropdownOpen(false);
+      modelTrigger?.focus();
+    }
+  });
+  modelAddBtn?.addEventListener("click", submitNewModel);
+  document.addEventListener("click", (event) => {
+    if (modelDropdownOpen && modelCombobox && !modelCombobox.contains(event.target as Node)) {
+      setModelDropdownOpen(false);
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && modelDropdownOpen) {
+      setModelDropdownOpen(false);
+      modelTrigger?.focus();
+    }
+  });
   refreshBtn?.addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
   copyBtn?.addEventListener("click", () => {
     vscode.postMessage({ type: "copyMarkdown", markdown: view.markdown });
@@ -512,4 +680,7 @@ declare const hljs: {
   function copyIcon(): string {
     return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
   }
+
+  paintModelCombobox();
+  vscode.postMessage({ type: "ready" });
 })();

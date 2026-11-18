@@ -2,7 +2,7 @@
   "name": "deepwiki",
   "displayName": "DeepWiki",
   "description": "Interactive Code Encyclopedia & Symbol Documentation for VS Code",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "publisher": "6qat",
   "publisherDisplayName": "Guilherme Ceschiatti",
   "author": "Guilherme Ceschiatti",
@@ -121,6 +121,14 @@
           "type": "string",
           "default": "llama3.2",
           "description": "Model identifier to generate articles (e.g., llama3.2, gpt-4o, claude-3-5-sonnet-latest, gemini-2.0-flash)."
+        },
+        "deepwiki.models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Saved model identifiers displayed in the DeepWiki panel model combobox."
         },
         "deepwiki.apiKey": {
           "type": "string",

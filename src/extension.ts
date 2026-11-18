@@ -7,7 +7,7 @@ import {
 import { DeepWikiViewProvider } from "./webview/wikiViewProvider";
 
 export function activate(context: vscode.ExtensionContext) {
-  const provider = new DeepWikiViewProvider(context.extensionUri);
+  const provider = new DeepWikiViewProvider(context.extensionUri, context.globalState);
 
   // Register the sidebar webview view provider
   context.subscriptions.push(
@@ -18,7 +18,7 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Configuration change listener (Output Language)
+  // Configuration change listener (Output Language & Model selection)
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (event.affectsConfiguration("deepwiki.outputLanguage")) {
@@ -26,6 +26,12 @@ export function activate(context: vscode.ExtensionContext) {
           .getConfiguration("deepwiki")
           .get<string>("outputLanguage", "en");
         await provider.setOutputLanguage(lang);
+      }
+      if (
+        event.affectsConfiguration("deepwiki.model") ||
+        event.affectsConfiguration("deepwiki.models")
+      ) {
+        provider.syncModelState();
       }
     }),
   );

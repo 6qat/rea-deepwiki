@@ -9,6 +9,10 @@ import type {
   WebviewToExtensionMessage,
 } from "../types";
 import { getDeepWikiWebviewContent } from "./deepwikiHtml";
+import { DEFAULT_MODEL } from "./modelList";
+import { ModelStore } from "./modelStore";
+
+const FALLBACK_MODELS_KEY = "deepwiki.fallbackModels";
 
 const wikiHermesMessages = {
   opened: "Opened new chat in Hermes Studio. Question context copied to clipboard.",
@@ -20,14 +24,63 @@ function getOutputLanguage(): OutputLanguage {
   return lang === "pt-BR" ? "pt-BR" : "en";
 }
 
+function configTargetFor(
+  config: vscode.WorkspaceConfiguration,
+  key: string,
+): vscode.ConfigurationTarget {
+  const inspected = config.inspect(key);
+  if (inspected?.workspaceValue !== undefined) {
+    return vscode.ConfigurationTarget.Workspace;
+  }
+  return vscode.ConfigurationTarget.Global;
+}
+
 export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "deepwiki.wikiView";
 
   private _view?: vscode.WebviewView;
   private _panel?: vscode.WebviewPanel;
   private readonly _session: ArticleSession;
+  private readonly _modelStore: ModelStore;
+  private _fallbackModels: string[];
 
-  constructor(private readonly _extensionUri: vscode.Uri) {
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _globalState?: vscode.Memento,
+  ) {
+    const storedFallback = this._globalState?.get<string[]>(FALLBACK_MODELS_KEY, []);
+    this._fallbackModels = Array.isArray(storedFallback) ? storedFallback : [];
+
+    this._modelStore = new ModelStore({
+      readConfig: () => {
+        const config = vscode.workspace.getConfiguration("deepwiki");
+        const inspectedModels = config.inspect<string[]>("models");
+        const hasExplicitSavedModels =
+          inspectedModels?.globalValue !== undefined ||
+          inspectedModels?.workspaceValue !== undefined ||
+          inspectedModels?.workspaceFolderValue !== undefined;
+        const rawModels = config.get<string[]>("models", []);
+        return {
+          currentModel: config.get<string>("model", DEFAULT_MODEL),
+          savedModels: Array.isArray(rawModels) ? rawModels : [],
+          hasExplicitSavedModels,
+        };
+      },
+      writeModels: async (models) => {
+        const config = vscode.workspace.getConfiguration("deepwiki");
+        await config.update("models", models, configTargetFor(config, "models"));
+      },
+      writeCurrentModel: async (model) => {
+        const config = vscode.workspace.getConfiguration("deepwiki");
+        await config.update("model", model, configTargetFor(config, "model"));
+      },
+      readFallbackModels: () => this._fallbackModels,
+      writeFallbackModels: async (models) => {
+        this._fallbackModels = [...models];
+        await this._globalState?.update(FALLBACK_MODELS_KEY, this._fallbackModels);
+      },
+    });
+
     this._session = new ArticleSession({
       createProvider: (model) => AIProviderFactory.createProvider(model),
       emit: (message) => this.postToAllWebviews(message),
@@ -63,6 +116,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       webviewView.webview,
       this._extensionUri,
       getOutputLanguage(),
+      this._modelStore.readState(),
     );
 
     this.setupMessageListener(webviewView.webview);
@@ -93,6 +147,7 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
       this._panel.webview,
       this._extensionUri,
       getOutputLanguage(),
+      this._modelStore.readState(),
     );
 
     this.setupMessageListener(this._panel.webview);
@@ -107,6 +162,11 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
   private setupMessageListener(webview: vscode.Webview): void {
     webview.onDidReceiveMessage(async (msg: WebviewToExtensionMessage) => {
       switch (msg.type) {
+        case "ready":
+          webview.postMessage({ type: "setLanguage", language: getOutputLanguage() });
+          webview.postMessage({ type: "setModelState", ...this._modelStore.readState() });
+          this._session.restore();
+          break;
         case "openFileLocation":
           await this.handleOpenFileLocation(msg.uri, msg.line, msg.column);
           break;
@@ -127,6 +187,15 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
         case "refresh":
           await this.refreshCurrentArticle();
           break;
+        case "selectModel":
+          await this.updateModelState(() => this._modelStore.select(msg.model));
+          break;
+        case "addModel":
+          await this.updateModelState(() => this._modelStore.add(msg.model));
+          break;
+        case "deleteModel":
+          await this.updateModelState(() => this._modelStore.delete(msg.model));
+          break;
         case "followupClick":
         case "askCustomQuestion":
           await this._session.handleFollowup(msg.question, msg.qaId);
@@ -136,6 +205,20 @@ export class DeepWikiViewProvider implements vscode.WebviewViewProvider {
           break;
       }
     });
+  }
+
+  private async updateModelState(update: () => Promise<unknown>): Promise<void> {
+    try {
+      await update();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Failed to update DeepWiki model: ${err?.message ?? err}`);
+    } finally {
+      this.syncModelState();
+    }
+  }
+
+  public syncModelState(): void {
+    this.postToAllWebviews({ type: "setModelState", ...this._modelStore.readState() });
   }
 
   public async setOutputLanguage(language: string): Promise<void> {

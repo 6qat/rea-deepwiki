@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { DeepWikiSymbol } from "../types.ts";
-import { applyHostMessage, initialPanelView } from "./panelView.ts";
+import { applyHostMessage, getPanelStrings, initialPanelView } from "./panelView.ts";
 
 const symbol: DeepWikiSymbol = {
   name: "Foo",
@@ -133,4 +133,30 @@ test("setLanguage updates the panel language and localized headers", () => {
   view = applyHostMessage(view, { type: "setLanguage", language: "en" });
   assert.equal(view.language, "en");
   assert.equal(view.header.kind, "Function");
+});
+
+test("setModelState updates the active model and available models", () => {
+  let view = initialPanelView();
+  assert.equal(view.modelState.currentModel, "llama3.2");
+  assert.deepEqual(view.modelState.models, ["llama3.2"]);
+
+  view = applyHostMessage(view, {
+    type: "setModelState",
+    currentModel: "gpt-4o",
+    models: ["llama3.2", "gpt-4o"],
+  });
+  assert.deepEqual(view.modelState, {
+    currentModel: "gpt-4o",
+    models: ["llama3.2", "gpt-4o"],
+  });
+});
+
+test("panel strings provide localized labels for the model combobox", () => {
+  const en = getPanelStrings("en");
+  const pt = getPanelStrings("pt-BR");
+  assert.ok(en.selectModel.length > 0);
+  assert.ok(en.addModelPlaceholder.length > 0);
+  assert.ok(en.addModel.length > 0);
+  assert.ok(en.deleteModel.length > 0);
+  assert.notEqual(pt.selectModel, en.selectModel);
 });
